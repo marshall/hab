@@ -14,8 +14,16 @@ top = '.'
 out = 'build'
 
 def options(ctx):
-    ctx.add_option('--arduino', help='Arduino directory (default %default)', default='/Applications/Arduino.app')
-    ctx.add_option('--port', help='Arduino USB port (default %default)', default='/dev/tty.usbmodem*')
+    if platform.system() == 'Darwin':
+        default_arduino = '/Applications/Arduino.app'
+        default_tty = '/dev/tty.usbmodem*'
+    else:
+        default_arduino = '/usr/share/arduino'
+        default_tty = '/dev/ttyUSB*'
+
+    ctx.add_option('--arduino', help='Arduino directory (default %default)', default=default_arduino)
+    ctx.add_option('--toolchain', help='Directory for the avr-* executables', default=None)
+    ctx.add_option('--port', help='Arduino USB port (default %default)', default=default_tty)
     ctx.add_option('--mcu', help='Target Arduino MCU (default %default)', default='atmega2560')
     ctx.add_option('--fcpu', help='F_CPU rate (default %default)', type=long, default=16000000)
     ctx.add_option('--format', help='Output format (default %default)', default='ihex')
@@ -35,12 +43,19 @@ def configure_balloon(cfg):
         arduino_hardware = os.path.join(arduino, 'Contents', 'Resources',
                                         'Java', 'hardware')
     else:
-        print >>sys.stderr, 'Unsure how to build arduino paths for %s' % platform.system()
-        sys.exit(1)
+        arduino_hardware = os.path.join(arduino, 'hardware')
+
+    if not os.path.exists(arduino_hardware):
+        cfg.fatal('Arduino "hardware" is missing: %s' % arduino_hardware)
 
     env.ARDUINO_BIN = os.path.join(arduino_hardware, 'tools', 'avr', 'bin')
     env.ARDUINO_CORE = os.path.join(arduino_hardware, 'arduino', 'cores', 'arduino')
     env.ARDUINO_VARIANTS = os.path.join(arduino_hardware, 'arduino', 'variants')
+
+    if platform.system() == 'Darwin':
+        default_toolchain = env.ARDUINO_BIN
+    else:
+        default_toolchain = '/usr/bin'
 
     env.PORT = cfg.options.port
     env.MCU = cfg.options.mcu
@@ -49,11 +64,13 @@ def configure_balloon(cfg):
     env.PROGRAMMER = cfg.options.programmer
     env.VARIANT = 'mega' if cfg.options.mcu.startswith('atmega') else 'standard'
 
-    env.CC = env.ARDUINO_BIN + '/avr-gcc'
-    env.AR = env.ARDUINO_BIN + '/avr-ar'
-    env.CXX = env.ARDUINO_BIN + '/avr-g++'
-    env.OBJCOPY = env.ARDUINO_BIN + '/avr-objcopy'
+    avr_paths = os.environ['PATH'].split(os.pathsep)
+    avr_paths.extend(env.ARDUINO_BIN)
 
+    cfg.find_program('avr-gcc', var='CC', path_list=avr_paths)
+    cfg.find_program('avr-ar', var='AR', path_list=avr_paths)
+    cfg.find_program('avr-g++', var='CXX', path_list=avr_paths)
+    cfg.find_program('avr-objcopy', var='OBJCOPY', path_list=avr_paths)
     cfg.load('gcc g++')
     cfg.find_program('avrdude', var='AVRDUDE')
 
@@ -82,9 +99,12 @@ def build(bld):
 
 def build_balloon(bld):
     env = bld.env_of_name('balloon')
-    print env.ARDUINO_CORE
+
+    bld(rule='../balloon/nmea_progmem.py ${SRC} kSentences > ${TGT}',
+        source='data/test.nmea', target='nmea_sentences.c', always=True)
 
     sources = bld.path.ant_glob('balloon/*.cpp')
+    sources.append(bld.path.find_node('build/nmea_sentences.c'))
     sources.extend(bld.root.ant_glob([
         env.ARDUINO_CORE[1:] + '/*.c',
         env.ARDUINO_CORE[1:] + '/*.cpp',
@@ -92,6 +112,7 @@ def build_balloon(bld):
 
     bld.program(target=BALLOON_TARGET+'.elf',
         source=sources,
+        includes='.',
         env=env)
 
     bld(rule='${OBJCOPY} -R .eeprom -O ${FORMAT} ${SRC} ${TGT}',

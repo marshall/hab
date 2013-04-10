@@ -27,11 +27,11 @@ total = len(lines)
 dwidth = "%%0%dd" % len(str(total))
 
 for line in lines:
-    print "static char %s_%s[] PROGMEM = \"%s\";" % (var, dwidth % count, line)
+    print "char %s_%s[] PROGMEM = \"%s\\r\\n\";" % (var, dwidth % count, line)
     count += 1
     max_len = max(len(line), max_len)
 
-print "static const char *%s[] PROGMEM = {" % var
+print "const char *%s[] PROGMEM = {" % var
 for i in range(count):
     print "    %s_%s," % (var, dwidth % i)
 print "};"

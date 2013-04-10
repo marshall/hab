@@ -1,7 +1,12 @@
 #include <Arduino.h>
 
 #include "nmea_test.h"
-#include "nmea_sentences.h"
+
+extern "C" {
+extern const uint16_t kSentencesLength;
+extern const uint16_t kSentencesMaxStringLength;
+extern const char *kSentences[] PROGMEM;
+}
 
 NmeaTest::NmeaTest() : mSentence(0), mLastSent(0)
 {
@@ -17,7 +22,6 @@ void NmeaTest::tick()
     strcpy_P(sentence, (char*) pgm_read_word(&(kSentences[mSentence])));
 
     Serial1.write(sentence);
-    Serial1.write("\r\n");
     Serial1.flush();
 
     mLastSent = millis();
