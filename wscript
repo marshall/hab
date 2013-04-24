@@ -19,7 +19,7 @@ def options(ctx):
         default_tty = '/dev/tty.usbmodem*'
     else:
         default_arduino = '/usr/share/arduino'
-        default_tty = '/dev/ttyUSB*'
+        default_tty = '/dev/ttyACM*'
 
     ctx.add_option('--arduino', help='Arduino directory (default %default)', default=default_arduino)
     ctx.add_option('--toolchain', help='Directory for the avr-* executables', default=None)
@@ -38,19 +38,36 @@ def configure_balloon(cfg):
     cfg.setenv('balloon')
     env = cfg.env
 
+    cfg.start_msg('Checking for Arduino')
     arduino = cfg.options.arduino
-    if platform.system() == 'Darwin':
-        arduino_hardware = os.path.join(arduino, 'Contents', 'Resources',
-                                        'Java', 'hardware')
-    else:
-        arduino_hardware = os.path.join(arduino, 'hardware')
+    arduino_lib = os.path.join(arduino, 'lib')
+    if not os.path.exists(arduino_lib) and platform.system() == 'Darwin':
+        arduino = os.path.join(arduino, 'Contents', 'Resources', 'Java')
+        arduino_lib = os.path.join(arduino, 'lib')
 
+    if not os.path.exists(arduino_lib):
+        cfg.fatal('Arduino "lib" is missing: %s' % arduino_lib)
+
+    version_txt = os.path.join(arduino_lib, 'version.txt')
+    if not os.path.exists(version_txt):
+        cfg.fatal('Arduino "version.txt" is missing: %s' % version_txt)
+
+    arduino_version = open(version_txt, 'r').read().strip()
+    env.ARDUINO_VERSION = [int(x) for x in arduino_version.split('.')]
+    cfg.end_msg('%s (%s)' % (arduino, arduino_version))
+
+    arduino_hardware = os.path.join(arduino, 'hardware')
     if not os.path.exists(arduino_hardware):
         cfg.fatal('Arduino "hardware" is missing: %s' % arduino_hardware)
 
     env.ARDUINO_BIN = os.path.join(arduino_hardware, 'tools', 'avr', 'bin')
-    env.ARDUINO_CORE = os.path.join(arduino_hardware, 'arduino', 'avr', 'cores', 'arduino')
-    env.ARDUINO_VARIANTS = os.path.join(arduino_hardware, 'arduino', 'avr', 'variants')
+
+    hw_arduino = os.path.join(arduino_hardware, 'arduino')
+    if env.ARDUINO_VERSION[0] >= 1 and env.ARDUINO_VERSION[1] >= 5:
+        hw_arduino = os.path.join(hw_arduino, 'avr')
+
+    env.ARDUINO_CORE = os.path.join(hw_arduino, 'cores', 'arduino')
+    env.ARDUINO_VARIANTS = os.path.join(hw_arduino, 'variants')
 
     if platform.system() == 'Darwin':
         default_toolchain = env.ARDUINO_BIN
