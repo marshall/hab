@@ -1,0 +1,3 @@
+[submodule "balloon/lib/Adafruit-GPS-Library"]
+	path = balloon/lib/Adafruit-GPS-Library
+	url = https://github.com/adafruit/Adafruit-GPS-Library

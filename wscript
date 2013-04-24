@@ -66,6 +66,7 @@ def configure_balloon(cfg):
     if env.ARDUINO_VERSION[0] >= 1 and env.ARDUINO_VERSION[1] >= 5:
         hw_arduino = os.path.join(hw_arduino, 'avr')
 
+    env.ARDUINO_HARDWARE = hw_arduino
     env.ARDUINO_CORE = os.path.join(hw_arduino, 'cores', 'arduino')
     env.ARDUINO_VARIANTS = os.path.join(hw_arduino, 'variants')
 
@@ -92,7 +93,7 @@ def configure_balloon(cfg):
     cfg.find_program('avrdude', var='AVRDUDE')
 
     env.append_value('LINKFLAGS', ['-Wl,--gc-sections,--relax', '-mmcu=%s' % env.MCU])
-    env.append_value('LIBS', ['m'])
+    env.append_value('LIB', ['c', 'm', 'c'])
 
     env.ARDUINO_VERSION = '101'
     balloon_cflags = ['-Wall', '-Os', '-fno-exceptions', '-ffunction-sections',
@@ -121,8 +122,23 @@ def build_balloon(bld):
     bld(rule='../balloon/nmea_progmem.py ${SRC} kSentences > ${TGT}',
         source='data/cubesat.nmea', target=nmea_sentences, always=True)
 
-    sources = bld.path.ant_glob('balloon/*.cpp')
+    arduino_libraries = [
+        env.ARDUINO_HARDWARE + '/libraries/SoftwareSerial',
+        'balloon/lib/Adafruit-GPS-Library'
+    ]
+
+    sources = bld.path.ant_glob(['balloon/*.cpp'])
     sources.append(nmea_sentences)
+    includes = ['.']
+
+    for lib in arduino_libraries:
+        if lib.startswith(env.ARDUINO_HARDWARE):
+            sources.extend(bld.root.ant_glob(lib[1:] + '/*.cpp'))
+        else:
+            sources.extend(bld.path.ant_glob(lib + '/*.cpp'))
+
+        includes.append(lib)
+
     sources.extend(bld.root.ant_glob([
         env.ARDUINO_CORE[1:] + '/**/*.c',
         env.ARDUINO_CORE[1:] + '/**/*.cpp',
@@ -130,7 +146,7 @@ def build_balloon(bld):
 
     bld.program(target=BALLOON_TARGET+'.elf',
         source=sources,
-        includes='.',
+        includes=includes,
         env=env)
 
     bld(rule='${OBJCOPY} -R .eeprom -O ${FORMAT} ${SRC} ${TGT}',
