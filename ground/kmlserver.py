@@ -38,7 +38,7 @@ def read_serial_fake(q):
             i += 1
         time.sleep(1)
 
-read_serial = read_serial_fake
+read_serial = read_serial_real
 
 KML_TEMPLATE = '''<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2">
@@ -85,6 +85,7 @@ class KmlServer(BaseHTTPServer.HTTPServer):
         self.serial_proc = multiprocessing.Process(target=read_serial, args=(self.queue,))
         self.serial_proc.start()
         self.coords = []
+        self.last_altitude = 0
 
     def collect_queue(self):
         while True:
@@ -108,16 +109,22 @@ class KmlServer(BaseHTTPServer.HTTPServer):
 
         args = nmea.strip().split(',')
         if args[0] == '$GPGGA':
+            if len(args[2]) == 0 or len(args[4]) == 0:
+                return
+
+            self.last_altitude = float(args[9]) if args[9] else 150
             self.coords.append(dict(
                 latitude=lat2dec(args[2], args[3]),
                 longitude=lng2dec(args[4], args[5]),
-                altitude= float(args[9]) if args[9] else 650
+                altitude=self.last_altitude / 1000,
             ))
         elif args[0] == '$GPRMC':
+            if len(args[3]) == 0 or len(args[5]) == 0:
+                return
             self.coords.append(dict(
               latitude=lat2dec(args[3], args[4]),
               longitude=lng2dec(args[5], args[6]),
-              altitude=650,
+              altitude=self.last_altitude / 1000,
             ))
 
 class KmlHandler(BaseHTTPServer.BaseHTTPRequestHandler):
