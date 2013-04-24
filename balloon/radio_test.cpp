@@ -12,6 +12,7 @@ NmeaTest nmeaTest;
 void setup() {
   Serial.begin(9600);
   Serial1.begin(9600);
+  Serial2.begin(9600);
   Serial1.setTimeout(3000);
 
   pinMode(ledPin, OUTPUT);
@@ -125,6 +126,20 @@ void sendHelloWorld()
     delay(1000);
 }
 
+void serialEvent2()
+{
+    digitalWrite(ledPin, HIGH);
+    //Serial.print("GPS >");
+
+    while (Serial2.available()) {
+        int b = Serial2.read();
+        Serial1.write(b);
+        //Serial.print(b, HEX);
+    }
+    //Serial.println("");
+    digitalWrite(ledPin, LOW);
+}
+
 bool configured = false;
 void loop()
 {
@@ -133,7 +148,7 @@ void loop()
         configured = true;
     }
 
-    nmeaTest.tick();
+    //nmeaTest.tick();
     //sendHelloWorld();
   //terminal();
   //delay(100000);

@@ -49,8 +49,8 @@ def configure_balloon(cfg):
         cfg.fatal('Arduino "hardware" is missing: %s' % arduino_hardware)
 
     env.ARDUINO_BIN = os.path.join(arduino_hardware, 'tools', 'avr', 'bin')
-    env.ARDUINO_CORE = os.path.join(arduino_hardware, 'arduino', 'cores', 'arduino')
-    env.ARDUINO_VARIANTS = os.path.join(arduino_hardware, 'arduino', 'variants')
+    env.ARDUINO_CORE = os.path.join(arduino_hardware, 'arduino', 'avr', 'cores', 'arduino')
+    env.ARDUINO_VARIANTS = os.path.join(arduino_hardware, 'arduino', 'avr', 'variants')
 
     if platform.system() == 'Darwin':
         default_toolchain = env.ARDUINO_BIN
@@ -64,8 +64,8 @@ def configure_balloon(cfg):
     env.PROGRAMMER = cfg.options.programmer
     env.VARIANT = 'mega' if cfg.options.mcu.startswith('atmega') else 'standard'
 
-    avr_paths = os.environ['PATH'].split(os.pathsep)
-    avr_paths.extend(env.ARDUINO_BIN)
+    avr_paths = [env.ARDUINO_BIN]
+    avr_paths.extend(os.environ['PATH'].split(os.pathsep))
 
     cfg.find_program('avr-gcc', var='CC', path_list=avr_paths)
     cfg.find_program('avr-ar', var='AR', path_list=avr_paths)
@@ -100,14 +100,15 @@ def build(bld):
 def build_balloon(bld):
     env = bld.env_of_name('balloon')
 
+    nmea_sentences = bld.path.make_node('build/nmea_sentences.c')
     bld(rule='../balloon/nmea_progmem.py ${SRC} kSentences > ${TGT}',
-        source='data/test.nmea', target='nmea_sentences.c', always=True)
+        source='data/cubesat.nmea', target=nmea_sentences, always=True)
 
     sources = bld.path.ant_glob('balloon/*.cpp')
-    sources.append(bld.path.find_node('build/nmea_sentences.c'))
+    sources.append(nmea_sentences)
     sources.extend(bld.root.ant_glob([
-        env.ARDUINO_CORE[1:] + '/*.c',
-        env.ARDUINO_CORE[1:] + '/*.cpp',
+        env.ARDUINO_CORE[1:] + '/**/*.c',
+        env.ARDUINO_CORE[1:] + '/**/*.cpp',
     ]))
 
     bld.program(target=BALLOON_TARGET+'.elf',
