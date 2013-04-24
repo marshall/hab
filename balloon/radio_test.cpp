@@ -3,20 +3,16 @@
 #include <string.h>
 
 #include <Arduino.h>
+#include <SoftwareSerial.h>
+#include <Adafruit_GPS.h>
 
 #include "nmea_test.h"
 
 int ledPin = 13;
 NmeaTest nmeaTest;
+Adafruit_GPS gps(&Serial2);
 
-void setup() {
-  Serial.begin(9600);
-  Serial1.begin(9600);
-  Serial2.begin(9600);
-  Serial1.setTimeout(3000);
 
-  pinMode(ledPin, OUTPUT);
-}
 
 void p(const char *fmt, ... ){
     char tmp[256]; // resulting string limited to 256 chars
@@ -75,11 +71,16 @@ void handshake()
   time = millis() - time;
   p("In AT command mode, took %ld ms\n", time);*/
 
+  p("Setting up radio..");
   for (int i = 0; i < COMMANDS_LEN; i++) {
     if (!sendAT(commands[i])) {
       break;
     }
   }
+
+  p("Setting up GPS...");
+  gps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+  gps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
 //  sendAT("ATCN");
 }
@@ -140,13 +141,13 @@ void serialEvent2()
     digitalWrite(ledPin, LOW);
 }
 
-bool configured = false;
+//bool configured = false;
 void loop()
 {
-    if (!configured) {
+    /*if (!configured) {
         handshake();
         configured = true;
-    }
+    }*/
 
     //nmeaTest.tick();
     //sendHelloWorld();
@@ -166,4 +167,15 @@ void loop()
   dumpSerial1();
 
   delay(100000);*/
+}
+
+void setup() {
+  Serial.begin(9600);
+  Serial1.begin(9600);
+  Serial1.setTimeout(3000);
+  gps.begin(9600);
+  pinMode(ledPin, OUTPUT);
+
+  delay(1000);
+  handshake();
 }

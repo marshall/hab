@@ -67,6 +67,12 @@ def configure_balloon(cfg):
         hw_arduino = os.path.join(hw_arduino, 'avr')
 
     env.ARDUINO_HARDWARE = hw_arduino
+    arduino_libraries = os.path.join(hw_arduino, 'libraries')
+    if os.path.exists(arduino_libraries):
+        env.ARDUINO_LIBRARIES = arduino_libraries
+    else:
+        env.ARDUINO_LIBRARIES = os.path.join(arduino, 'libraries')
+
     env.ARDUINO_CORE = os.path.join(hw_arduino, 'cores', 'arduino')
     env.ARDUINO_VARIANTS = os.path.join(hw_arduino, 'variants')
 
@@ -123,7 +129,7 @@ def build_balloon(bld):
         source='data/cubesat.nmea', target=nmea_sentences, always=True)
 
     arduino_libraries = [
-        env.ARDUINO_HARDWARE + '/libraries/SoftwareSerial',
+        env.ARDUINO_LIBRARIES + '/SoftwareSerial',
         'balloon/lib/Adafruit-GPS-Library'
     ]
 
@@ -132,7 +138,7 @@ def build_balloon(bld):
     includes = ['.']
 
     for lib in arduino_libraries:
-        if lib.startswith(env.ARDUINO_HARDWARE):
+        if lib.startswith(env.ARDUINO_LIBRARIES):
             sources.extend(bld.root.ant_glob(lib[1:] + '/*.cpp'))
         else:
             sources.extend(bld.path.ant_glob(lib + '/*.cpp'))
