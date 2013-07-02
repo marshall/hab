@@ -168,7 +168,8 @@ def build_ground(bld):
 def program(bld):
     bld(rule='${AVRDUDE} -F -p ${MCU} -P ${PORT} -c ${PROGRAMMER} ' \
              '-U flash:w:${SRC}', source=BALLOON_TARGET+'.hex',
-        env=bld.env_of_name('balloon'))
+        env=bld.env_of_name('balloon'),
+        always=True)
 
 class Program(BuildContext):
     cmd = 'program'

@@ -23,9 +23,10 @@ void p(const char *fmt, ... ){
     Serial.print(tmp);
 }
 
-#define COMMANDS_LEN 7
+#define COMMANDS_LEN 6
 const char *commands[COMMANDS_LEN] = {
-  "+++", "ATMY\r", "ATDT\r", "ATVL\r", "ATPL 2\r", "ATPL\r", "ATCN\r"
+//  "+++", "ATMY\r", "ATDT\r", "ATVL\r", "ATPL 2\r", "ATPL\r", "ATCN\r"
+  "+++", "ATMY\r", "ATDT\r", "ATVL\r", "ATPL\r", "ATCN\r"
 };
 
 boolean sendAT(const char *command)
@@ -142,8 +143,15 @@ void serialEvent2()
 }
 
 //bool configured = false;
+bool sentHi = false;
 void loop()
 {
+  if (!sentHi) {
+    Serial1.println("FIRST LOOP!!");
+    Serial1.flush();
+    delay(500);
+    sentHi = true;
+  }
     /*if (!configured) {
         handshake();
         configured = true;
@@ -178,4 +186,5 @@ void setup() {
 
   delay(1000);
   handshake();
+  Serial.println("finished setup");
 }

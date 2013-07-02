@@ -8,18 +8,47 @@ import serial
 import sys
 import time
 
+#port = '/dev/tty.usbmodemfd12351'
+port = '/dev/tty.usbmodemfd121'
+
+with open('ground.log', 'a') as log:
+    log.write('[start @ %s]\n' % time.asctime())
+
+def validate_nmea(line):
+    star = line.find('*')
+    if line[0] != '$' or star == -1 or len(line) - star <= 1:
+        return False
+
+    i = 0
+    checksum = 0
+    for i in range(1, len(line)):
+        if i == star:
+            break
+        checksum ^= ord(line[i])
+
+    expected = int(line[star+1:], 16)
+    if expected != checksum:
+        print 'Discarding garbage line, chksum=%x, expected %x: %s' % \
+            (checksum, expected, line)
+        return False
+
+    return True
+
 def read_serial_real(q):
-    ser = serial.Serial(port='/dev/tty.usbserial-A601FDF6',
+    ser = serial.Serial(port=port,
                         baudrate=9600,
                         timeout=1)
     try:
         while True:
             line = ser.readline()
-            if not line:
+            if not line or not validate_nmea(line):
                 continue
 
             print line
             q.put_nowait(line)
+            with open('ground.log', 'a') as log:
+                log.write(line)
+
     except:
         pass
 
