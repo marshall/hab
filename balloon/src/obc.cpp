@@ -3,22 +3,23 @@
 // Pins
 #define PIN_DHT22_DTA  2
 
+#define SERIAL_CONSOLE Serial
+#define SERIAL_RADIO   Serial1
+#define SERIAL_GPS     Serial2
+
 #define DHT22_OK         0
 #define DHT22_CHKSUM_ERR -1
 
 pepper2::OBC::OBC() :
     mDht22(PIN_DHT22_DTA),
+    mGps(&SERIAL_GPS),
     mRefreshDelta(1000),
     mHours(0),
     mMinutes(0),
     mSeconds(0),
     mPowerLevel(0),
     mRadioLinkActive(false),
-    mGpsLock(false),
-    mTemp(0.0f),
-    mLat(0.0f),
-    mLng(0.0f),
-    mAlt(0.0f)
+    mTemp(0.0f)
 {
     mBegin = millis();
     mMonitor = new pepper2::Monitor(this);
@@ -37,11 +38,23 @@ void pepper2::OBC::getUptime(uint8_t *hours, uint8_t *minutes, uint8_t *seconds)
 }
 
 void pepper2::OBC::begin() {
-    Serial.begin(115200);
+    SERIAL_CONSOLE.begin(115200);
+
+    SERIAL_GPS.begin(9600);
+    delay(10);
+    mGps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
+    mGps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+
     mMonitor->begin();
 }
 
 void pepper2::OBC::loop() {
+    mGps.read();
+    if (mGps.newNMEAreceived()) {
+        char *lastNMEA = mGps.lastNMEA();
+        mGps.parse(lastNMEA);
+    }
+
     if (millis() - mBegin < mRefreshDelta) {
         return;
     }

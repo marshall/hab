@@ -17,24 +17,26 @@ public:
     uint32_t getBegin() { return mBegin; }
     uint8_t getPowerLevel() { return mPowerLevel; }
     bool isRadioLinkActive () { return mRadioLinkActive; }
-    bool isGpsLocked() { return mGpsLock; }
+    bool isGpsFixed() { return mGps.fix; }
     float getTemperature() { return mTemp; }
-    float getLatitude() { return mLat; }
-    float getLongitude() { return mLng; }
-    float getAltitude() { return mAlt; }
+    float getLatitude() { return mGps.latitude; }
+    float getLongitude() { return mGps.longitude; }
+    float getAltitude() { return mGps.altitude; }
+    uint8_t getGpsFixQuality() { return mGps.fixquality; }
 
 private:
     void updateData();
 
     Monitor *mMonitor;
     dht22 mDht22;
+    Adafruit_GPS mGps;
 
     uint32_t mRefreshDelta;
     uint32_t mBegin;
     uint8_t mHours, mMinutes, mSeconds;
     uint8_t mPowerLevel;
-    bool mRadioLinkActive, mGpsLock;
-    float mTemp, mLat, mLng, mAlt;
+    bool mRadioLinkActive;
+    float mTemp;
 };
 
 class Monitor {

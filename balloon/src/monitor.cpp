@@ -22,11 +22,11 @@ void pepper2::Monitor::begin() {
 }
 
 void pepper2::Monitor::draw() {
-    static char lineBuffer[32];
+    static char lineBuffer[32], gpsBuffer[6];
     static uint8_t hours, minutes, seconds;
     static const char *kMonitorStrings[4] = {
         " PEPPER-2 %02dh%02dm%02ds ",
-        "RPL:%1d  RIO:%c  GPS:%c",
+        "RPL:%1d  RIO:%c  GPS:%s",
         "TMP:%+02.1fF LAT:%+02.1f",
         "LNG:%+02.1f  ALT:%+02.1fK",
     };
@@ -44,10 +44,17 @@ void pepper2::Monitor::draw() {
     mDisplay.setTextColor(WHITE);
 
     // width = 21 chars when text size = 1
+
+    if (!mObc->isGpsFixed()) {
+        strncpy(gpsBuffer, "NOFIX", 6);
+    } else {
+        snprintf(gpsBuffer, 6, "%d%%", mObc->getGpsFixQuality());
+    }
+
     snprintf(lineBuffer, 32, kMonitorStrings[1],
              mObc->getPowerLevel(),
              YN(mObc->isRadioLinkActive()),
-             YN(mObc->isGpsLocked()));
+             gpsBuffer);
     mDisplay.println(lineBuffer);
 
     snprintf(lineBuffer, 32, kMonitorStrings[2],
