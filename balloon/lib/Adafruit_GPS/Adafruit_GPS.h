@@ -20,10 +20,16 @@ All text above must be included in any redistribution
 #ifndef _ADAFRUIT_GPS_H
 #define _ADAFRUIT_GPS_H
 
+#if defined(ARDUINO_ARCH_AVR)
+#define USE_SOFTWARE_SERIAL
+#endif
+
+#if defined(USE_SOFTWARE_SERIAL)
 #if ARDUINO >= 100
  #include <SoftwareSerial.h>
 #else
  #include <NewSoftSerial.h>
+#endif
 #endif
 
 // different commands to set the update rate from once a second (1 Hz) to 10 times a second (10Hz)
@@ -71,7 +77,7 @@ All text above must be included in any redistribution
 
 #if ARDUINO >= 100
  #include "Arduino.h"
-#if !defined(__AVR_ATmega32U4__)
+#if !defined(__AVR_ATmega32U4__) && defined(USE_SOFTWARE_SERIAL)
  #include "SoftwareSerial.h"
 #endif
 #else
@@ -82,12 +88,12 @@ All text above must be included in any redistribution
 
 class Adafruit_GPS {
  public:
-  void begin(uint16_t baud); 
-
+#if defined(USE_SOFTWARE_SERIAL)
 #if ARDUINO >= 100 
   Adafruit_GPS(SoftwareSerial *ser); // Constructor when using SoftwareSerial
 #else
   Adafruit_GPS(NewSoftSerial  *ser); // Constructor when using NewSoftSerial
+#endif
 #endif
   Adafruit_GPS(HardwareSerial *ser); // Constructor when using HardwareSerial
 
@@ -125,10 +131,12 @@ class Adafruit_GPS {
   boolean paused;
   
   uint8_t parseResponse(char *response);
+#if defined(USE_SOFTWARE_SERIAL)
 #if ARDUINO >= 100
   SoftwareSerial *gpsSwSerial;
 #else
   NewSoftSerial  *gpsSwSerial;
+#endif
 #endif
   HardwareSerial *gpsHwSerial;
 };
