@@ -1,5 +1,12 @@
 #include <string.h>
-#include "pepper2.h"
+
+#include "libs.h"
+#include "monitor.h"
+#include "obc.h"
+
+#if SSD1306_LCDHEIGHT != 32
+#error("Height incorrect, please fix Adafruit_SSD1306.h!");
+#endif
 
 // Pins
 #define PIN_OLED_MOSI  9
@@ -21,12 +28,17 @@ void pepper2::Monitor::begin() {
     mDisplay.begin(SSD1306_SWITCHCAPVCC);
 }
 
+void pepper2::Monitor::println(char *message) {
+    //Serial.println(message);
+    mDisplay.println(message);
+}
+
 void pepper2::Monitor::draw() {
     static char lineBuffer[32], gpsBuffer[6];
     static uint8_t hours, minutes, seconds;
     static const char *kMonitorStrings[4] = {
         " PEPPER-2 %02dh%02dm%02ds ",
-        "RPL:%1d  RIO:%c  GPS:%s",
+        "RPL:%1d RIO:%c GPS:%s",
         "TMP:%+02.1fF LAT:%+02.1f",
         "LNG:%+02.1f  ALT:%+02.1fK",
     };
@@ -39,7 +51,7 @@ void pepper2::Monitor::draw() {
     mObc->getUptime(&hours, &minutes, &seconds);
     snprintf(lineBuffer, 32, kMonitorStrings[0],
              hours, minutes, seconds);
-    mDisplay.println(lineBuffer);
+    println(lineBuffer);
 
     mDisplay.setTextColor(WHITE);
 
@@ -55,14 +67,14 @@ void pepper2::Monitor::draw() {
              mObc->getPowerLevel(),
              YN(mObc->isRadioLinkActive()),
              gpsBuffer);
-    mDisplay.println(lineBuffer);
+    println(lineBuffer);
 
     snprintf(lineBuffer, 32, kMonitorStrings[2],
              mObc->getTemperature(), mObc->getLatitude());
-    mDisplay.println(lineBuffer);
+    println(lineBuffer);
 
     snprintf(lineBuffer, 32, kMonitorStrings[3],
              mObc->getLongitude(), mObc->getAltitude());
-    mDisplay.println(lineBuffer);
+    println(lineBuffer);
     mDisplay.display();
 }

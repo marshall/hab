@@ -1,4 +1,7 @@
-#include "pepper2.h"
+#include "libs.h"
+#include "monitor.h"
+#include "obc.h"
+#include "radio.h"
 
 // Pins
 #define PIN_DHT22_DTA  2
@@ -10,19 +13,25 @@
 #define DHT22_OK         0
 #define DHT22_CHKSUM_ERR -1
 
+static const int kMonitorInterval = 1000;
+static const int kTelemetryInterval = 5000;
+
 pepper2::OBC::OBC() :
     mDht22(PIN_DHT22_DTA),
     mGps(&SERIAL_GPS),
-    mRefreshDelta(1000),
+    mLastMonitor(0),
+    mLastTelemetry(0),
     mHours(0),
     mMinutes(0),
     mSeconds(0),
     mPowerLevel(0),
     mRadioLinkActive(false),
-    mTemp(0.0f)
+    mTemp(0.0f),
+    mHumidity(0.0f)
 {
     mBegin = millis();
     mMonitor = new pepper2::Monitor(this);
+    mRadio = new pepper2::Radio(this);
 }
 
 void pepper2::OBC::getUptime(uint8_t *hours, uint8_t *minutes, uint8_t *seconds) {
@@ -45,22 +54,48 @@ void pepper2::OBC::begin() {
     mGps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
     mGps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
 
+    mRadio->begin();
     mMonitor->begin();
 }
 
 void pepper2::OBC::loop() {
-    mGps.read();
-    if (mGps.newNMEAreceived()) {
-        char *lastNMEA = mGps.lastNMEA();
-        mGps.parse(lastNMEA);
-    }
-
-    if (millis() - mBegin < mRefreshDelta) {
-        return;
-    }
-
     updateData();
-    mMonitor->draw();
+
+    if (millis() - mLastTelemetry >= kTelemetryInterval) {
+        mRadio->sendTelemetry();
+        mLastTelemetry = millis();
+    }
+
+    if (millis() - mLastMonitor >= kMonitorInterval) {
+        mMonitor->draw();
+        mLastMonitor = millis();
+    }
+}
+
+float pepper2::OBC::getLatitude() {
+    // Latitude in decimal
+    float lat = floor(mGps.latitude / 100.0f);
+    lat += (mGps.latitude - (lat * 100)) / 60;
+    if (mGps.lat == 'S') {
+        lat *= -1;
+    }
+
+    return lat;
+}
+
+float pepper2::OBC::getLongitude() {
+    float lng = floor(mGps.longitude / 100.0f);
+    lng += (mGps.longitude - (lng * 100)) / 60;
+    if (mGps.lon == 'W') {
+        lng *= -1;
+    }
+
+    return lng;
+}
+
+float pepper2::OBC::getAltitude() {
+    // Altitude in KM
+    return mGps.altitude / 1000.0f;
 }
 
 void pepper2::OBC::updateData() {
@@ -71,6 +106,11 @@ void pepper2::OBC::updateData() {
     mMinutes = (uptime - hourSecs) / (60 * 1000);
     mSeconds = (uptime - hourSecs - (mMinutes * 60 * 1000)) / 1000;
 
+    updateTemp();
+    updateGps();
+}
+
+void pepper2::OBC::updateTemp() {
     static int tempCheck;
     do {
         tempCheck = mDht22.read();
@@ -79,6 +119,28 @@ void pepper2::OBC::updateData() {
 
     if (tempCheck == DHT22_OK) {
         mTemp = (float) mDht22.fahrenheit();
+        mHumidity = (float) mDht22.humidity;
     }
 }
 
+void pepper2::OBC::updateGps() {
+    while (SERIAL_GPS.available()) {
+        mGps.read();
+        if (!mGps.newNMEAreceived()) {
+            continue;
+        }
+    }
+
+    strncpy(mLastNmea, mGps.lastNMEA(), OBC_LAST_NMEA_SIZE - 1);
+    mGps.parse(mLastNmea);
+}
+
+static pepper2::OBC gObc;
+
+void setup() {
+    gObc.begin();
+}
+
+void loop() {
+    gObc.loop();
+}
