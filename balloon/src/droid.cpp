@@ -30,7 +30,7 @@ typedef struct __attribute__((packed)) {
 pepper2::Droid::Droid(pepper2::OBC *obc) :
     mObc(obc),
     mUsb(),
-    mAdk(&mUsb, kCompanyName, kAppName, kAccessoryName, kVersion, kUrl,
+    mAdk(&mUsb, kCompanyName, kAccessoryName, kAppName, kVersion, kUrl,
          kSerialNumber)
 {
 }
