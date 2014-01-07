@@ -2,13 +2,13 @@
 #include "monitor.h"
 #include "obc.h"
 #include "radio.h"
+#include "droid.h"
+
+#define LOG_TAG "OBC"
+#include "log.h"
 
 // Pins
 #define PIN_DHT22_DTA  2
-
-#define SERIAL_CONSOLE Serial
-#define SERIAL_RADIO   Serial1
-#define SERIAL_GPS     Serial2
 
 #define DHT22_OK         0
 #define DHT22_CHKSUM_ERR -1
@@ -32,6 +32,7 @@ pepper2::OBC::OBC() :
     mBegin = millis();
     mMonitor = new pepper2::Monitor(this);
     mRadio = new pepper2::Radio(this);
+    mDroid = new pepper2::Droid(this);
 }
 
 void pepper2::OBC::getUptime(uint8_t *hours, uint8_t *minutes, uint8_t *seconds) {
@@ -48,14 +49,22 @@ void pepper2::OBC::getUptime(uint8_t *hours, uint8_t *minutes, uint8_t *seconds)
 
 void pepper2::OBC::begin() {
     SERIAL_CONSOLE.begin(115200);
+    logInit(this);
 
+    LOG_DEBUG("GPS begin");
     SERIAL_GPS.begin(9600);
     delay(10);
+
+    LOG_DEBUG("GPS: SET_NMEA_OUTPUT_RMCGGA");
     mGps.sendCommand(PMTK_SET_NMEA_OUTPUT_RMCGGA);
-    mGps.sendCommand(PMTK_SET_NMEA_UPDATE_5HZ);
+    LOG_DEBUG("GPS: SET_NMEA_UPDATE_1HZ");
+    mGps.sendCommand(PMTK_SET_NMEA_UPDATE_1HZ);
 
     mRadio->begin();
     mMonitor->begin();
+    mDroid->begin();
+
+    LOG_INFO("booted in %d ms", millis() - mBegin);
 }
 
 void pepper2::OBC::loop() {
@@ -70,6 +79,8 @@ void pepper2::OBC::loop() {
         mMonitor->draw();
         mLastMonitor = millis();
     }
+
+    mDroid->loop();
 }
 
 float pepper2::OBC::getLatitude() {

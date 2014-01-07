@@ -3,6 +3,11 @@
 
 #define RADIO_BUFFER_SIZE 200
 
+#define NMEA_PREFIX          "PPR2"
+#define NMEA_TELEMETRY       NMEA_PREFIX "T"
+#define NMEA_DROID_TELEMETRY NMEA_PREFIX "DT"
+#define NMEA_PHOTO_DATA      NMEA_PREFIX "PD"
+
 namespace pepper2 {
 
 class OBC;
@@ -11,10 +16,9 @@ public:
     Radio(OBC *obc);
     void begin();
     void sendTelemetry();
+    void sendNmea(const char *type, const char *fmt, ...);
 
 private:
-    void buildNmea(const char *type, const char *fmt, ...);
-
     USARTClass *mSerial;
     OBC *mObc;
 

@@ -6,5 +6,8 @@
 #include <Adafruit_GPS.h>
 #include <Adafruit_SSD1306.h>
 #include <dht22.h>
+#include <adk.h>
+#include <SD.h>
+#include <variant.h>
 
 #endif
