@@ -12,7 +12,7 @@ static const char kLogFile[] = "pepper2.log";
 
 pepper2::Logger::Logger(OBC *obc) :
     mObc(obc),
-    mConsoleLevel(LOG_LEVEL_INFO),
+    mConsoleLevel(LOG_LEVEL_DEBUG),
     mFileLevel(LOG_LEVEL_DEBUG),
     mFileEnabled(false)
 {

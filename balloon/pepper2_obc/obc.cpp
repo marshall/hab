@@ -16,7 +16,7 @@
 static const int kMonitorInterval = 1000;
 static const int kTelemetryInterval = 5000;
 
-pepper2::OBC::OBC() :
+pepper2::OBC::OBC(USBHost *usb, ADK *adk) :
     mDht22(PIN_DHT22_DTA),
     mGps(&SERIAL_GPS),
     mLastMonitor(0),
@@ -32,7 +32,7 @@ pepper2::OBC::OBC() :
     mBegin = millis();
     mMonitor = new pepper2::Monitor(this);
     mRadio = new pepper2::Radio(this);
-    mDroid = new pepper2::Droid(this);
+    mDroid = new pepper2::Droid(this, usb, adk);
 }
 
 void pepper2::OBC::getUptime(uint8_t *hours, uint8_t *minutes, uint8_t *seconds) {
@@ -144,14 +144,4 @@ void pepper2::OBC::updateGps() {
 
     strncpy(mLastNmea, mGps.lastNMEA(), OBC_LAST_NMEA_SIZE - 1);
     mGps.parse(mLastNmea);
-}
-
-static pepper2::OBC gObc;
-
-void setup() {
-    gObc.begin();
-}
-
-void loop() {
-    gObc.loop();
 }

@@ -14,7 +14,7 @@ typedef struct __attribute__((packed)) {
 
 class Droid {
 public:
-    Droid(OBC *obc);
+    Droid(OBC *obc, USBHost *usbHost, ADK *adk);
     void begin();
     void loop();
 
@@ -23,8 +23,8 @@ private:
     void handleTelemetry(DroidMessage *msg, uint8_t *data);
 
     OBC *mObc;
-    ADK mAdk;
-    USBHost mUsb;
+    USBHost *mUsbHost;
+    ADK *mAdk;
 };
 
 }

@@ -3,14 +3,8 @@
 #include "radio.h"
 #include "droid.h"
 
-const char kAppName[] = "pepper2"; // the app on your phone
-const char kAccessoryName[] = "Arduino Due"; // your Arduino board
-const char kCompanyName[] = "Arduino SA";
-
-// Make up anything you want for these
-const char kVersion[] = "1.0";
-const char kSerialNumber[] = "1";
-const char kUrl[] = "http://www.arcaner.com";
+#define LOG_TAG "Droid"
+#include "log.h"
 
 const uint8_t kMsgTelemetry = 0;
 const uint8_t kMsgPhotoData = 1;
@@ -27,18 +21,20 @@ typedef struct __attribute__((packed)) {
     double altitude;
 } DroidTelemetry;
 
-pepper2::Droid::Droid(pepper2::OBC *obc) :
+// Note: is apparently very important that this is initialized at global scope
+// don't move it to a member variable :)
+
+//static USBHost gUsb;
+
+pepper2::Droid::Droid(pepper2::OBC *obc, USBHost *usbHost, ADK *adk) :
     mObc(obc),
-    mUsb(),
-    mAdk(&mUsb, kCompanyName, kAccessoryName, kAppName, kVersion, kUrl,
-         kSerialNumber)
+    mUsbHost(usbHost),
+    mAdk(adk)
 {
 }
 
 void pepper2::Droid::begin()
 {
-    cpu_irq_enable();
-    delay(200);
 }
 
 uint32_t pepper2::Droid::checksum(uint8_t *data, uint8_t length) {
@@ -59,23 +55,22 @@ void pepper2::Droid::loop()
 
     bytesRead = 0;
 
-    Serial.println("[droid] usb task");
-    mUsb.Task();
-
-    Serial.println("[droid] adk is ready");
-    if (!mAdk.isReady()) {
+    mUsbHost->Task();
+    if (!mAdk->isReady()) {
         return;
     }
 
-    Serial.println("[droid] read..");
-    mAdk.read(&bytesRead, sizeof(DroidMessage), (uint8_t *) &msg);
+    mAdk->read(&bytesRead, sizeof(DroidMessage), (uint8_t *) &msg);
     if (bytesRead == 0) {
+        LOG_DEBUG("read 0 bytes from ADK");
         return;
     }
+
+    LOG_DEBUG("rcvd usb message length %d, type %d, checksum %08x",
+              msg.length, msg.type, msg.checksum);
 
     bytesRead = 0;
-    Serial.println("[droid] read again..");
-    mAdk.read(&bytesRead, msg.length, data);
+    mAdk->read(&bytesRead, msg.length, data);
     if (bytesRead == 0) {
         Serial.println("[droid] error reading msg data");
         return;

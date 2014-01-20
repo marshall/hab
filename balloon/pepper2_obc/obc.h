@@ -15,7 +15,7 @@ class Radio;
 
 class OBC {
 public:
-    OBC();
+    OBC(USBHost *usb, ADK *adk);
     void begin();
     float getAltitude();
     float getLatitude();
