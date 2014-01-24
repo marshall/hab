@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <string name="app_name">pepper2</string>
+    <string name="dummy_button">Dummy Button</string>
+    <string name="dummy_content">PEPPER-2 HAB monitor</string>
+
+</resources>

@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<resources>
+    <usb-accessory model="Arduino Due" manufacturer="Arduino SA" version="0.1"/>
+</resources>
