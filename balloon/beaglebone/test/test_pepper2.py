@@ -9,7 +9,7 @@ this_dir = os.path.abspath(os.path.dirname(__file__))
 sys.path.append(os.path.dirname(this_dir))
 
 class MockPepper2Modules(object):
-    def __init__(self):
+    def __init__(self, *extra_modules):
         self.Adafruit_BBIO = MagicMock()
         self.serial = MagicMock()
         self.bluetooth = MagicMock()
@@ -27,6 +27,14 @@ class MockPepper2Modules(object):
             'spidev': self.spidev,
         }
 
+        for module in extra_modules:
+            self.patch_module(module)
+
+    def patch_module(self, name):
+        module = MagicMock()
+        setattr(self, name, module)
+        self.modules[name] = module
+
     def patch(self):
         return patch.dict('sys.modules', self.modules)
 
@@ -35,8 +43,9 @@ class NonNativeTestCase(unittest.TestCase):
         self.modules = MockPepper2Modules()
         self.patcher = self.modules.patch()
         self.patcher.start()
-        import pepper2
+        import pepper2, screen
         self.pepper2 = pepper2
+        self.screen = screen
 
         self.addCleanup(self.patcher.stop)
 
@@ -171,32 +180,32 @@ class GPSTest(NonNativeTestCase):
         self.assertEqual(gps.telemetry[0], gps.gprmc)
         self.assertEqual(gps.telemetry[1], gps.gpgga)
 
-class ScreenTest(NonNativeTestCase):
-    def test_main_screen(self):
-        oled = MagicMock()
-        oled.oled.font.cols = 5
-        oled.oled.font.rows = 8
-        oled.oled.rows = 32
-        screen = self.pepper2.MainScreen(oled)
-        screen.template_args = dict(
+class PanelTest(NonNativeTestCase):
+    def test_main_panel(self):
+        screen = MagicMock()
+        screen.font_width = 5
+        screen.font_height = 8
+        screen.height = 32
+        panel = self.screen.MainPanel(screen)
+        panel.template_args = dict(
             current_time='0',
             hours=1, minutes=1, seconds=1,
             android='Y', radio='Y',
             gps_qual=2, tmp=100.12,
             gps_lat=33.134, gps_lng=-98.333,
-            gps_alt=0.123
+            gps_alt=0.123, droid_bt='Y'
         )
-        screen.do_draw(0, 0)
+        panel.do_draw(0, 0)
 
-        oled.draw_text.assert_has_calls([
+        screen.draw_text.assert_has_calls([
             call(0, 0, '0 01h01m01s', invert=True),
             call(0, 8, 'AND:Y RDO:Y GPS:2'),
             call(0, 16, 'TMP:+100.12F LAT:+33.1'),
             call(0, 24, 'LNG:-98.3 ALT:+0.1K')])
 
-class ScreenBufferTest(NonNativeTestCase):
+class PanelBufferTest(NonNativeTestCase):
     def setUp(self):
-        super(ScreenBufferTest, self).setUp()
+        super(PanelBufferTest, self).setUp()
         self.obc = MagicMock()
         self.obc.cpu_usage = 50
         self.obc.gps.quality = 2
@@ -207,52 +216,51 @@ class ScreenBufferTest(NonNativeTestCase):
         self.obc.droid.connected = False
 
     @patch('pepper2.time.sleep')
-    @patch('pepper2.GPSScreen')
-    @patch('pepper2.SysScreen')
-    @patch('pepper2.MainScreen')
-    def test_switch_screen(self, MainScreen, SysScreen, GPSScreen, mock_sleep):
-        main_screen = MainScreen.return_value
-        sys_screen = SysScreen.return_value
-        gps_screen = GPSScreen.return_value
+    @patch('screen.GPSPanel')
+    @patch('screen.SysPanel')
+    @patch('screen.MainPanel')
+    def test_switch_screen(self, MainPanel, SysPanel, GPSPanel, mock_sleep):
+        main_panel = MainPanel.return_value
+        sys_panel = SysPanel.return_value
+        gps_panel = GPSPanel.return_value
 
-        oled = self.pepper2.OLED(self.obc)
-        screen_buffer = oled.screen_buffer
-        screen_buffer.oled = MagicMock()
-        screen_buffer.oled.SET_START_LINE = 0
+        oled = self.screen.Screen(self.obc)
+        panel_buffer = oled.panel_buffer
+        oled.set_start_line = MagicMock()
 
-        self.assertEqual(screen_buffer.active_screen, sys_screen)
-        self.assertEqual(screen_buffer.inactive_screen, gps_screen)
+        self.assertEqual(panel_buffer.active_panel, sys_panel)
+        self.assertEqual(panel_buffer.inactive_panel, gps_panel)
 
-        for screen in (main_screen, sys_screen, gps_screen):
+        for screen in (main_panel, sys_panel, gps_panel):
             screen.template_args = oled.build_template_args()
 
-        screen_buffer.draw()
-        sys_screen.do_draw.assert_called_with(0, 0)
-        gps_screen.do_draw.assert_called_with(0, 32)
+        panel_buffer.draw()
+        sys_panel.do_draw.assert_called_with(0, 0)
+        gps_panel.do_draw.assert_called_with(0, 32)
 
-        screen_buffer.switch_screen(gps_screen)
-        self.assertEqual(screen_buffer.active_screen, gps_screen)
-        self.assertEqual(screen_buffer.inactive_screen, sys_screen)
+        panel_buffer.switch_panel(gps_panel)
+        self.assertEqual(panel_buffer.active_panel, gps_panel)
+        self.assertEqual(panel_buffer.inactive_panel, sys_panel)
 
-        gps_screen.do_draw.assert_not_called()
-        screen_buffer.oled.command.assert_has_calls([call(i) for i in range(0, 33)])
+        gps_panel.do_draw.assert_not_called()
+        oled.set_start_line.assert_has_calls([call(i) for i in range(0, 33)])
 
-        screen_buffer.draw()
-        sys_screen.do_draw.assert_called_with(0, 0)
-        gps_screen.do_draw.assert_called_with(0, 32)
+        panel_buffer.draw()
+        sys_panel.do_draw.assert_called_with(0, 0)
+        gps_panel.do_draw.assert_called_with(0, 32)
 
-        screen_buffer.switch_screen(main_screen)
-        self.assertEqual(screen_buffer.active_screen, main_screen)
-        self.assertEqual(screen_buffer.inactive_screen, gps_screen)
-        self.assertTrue(sys_screen not in screen_buffer.screens)
-        self.assertEqual(len(screen_buffer.screens), 2)
+        panel_buffer.switch_panel(main_panel)
+        self.assertEqual(panel_buffer.active_panel, main_panel)
+        self.assertEqual(panel_buffer.inactive_panel, gps_panel)
+        self.assertTrue(sys_panel not in panel_buffer.panels)
+        self.assertEqual(len(panel_buffer.panels), 2)
 
-        main_screen.do_draw.assert_called_with(0, 0)
-        screen_buffer.oled.command.assert_has_calls([call(i) for i in range(32, -1, -1)])
+        main_panel.do_draw.assert_called_with(0, 0)
+        oled.set_start_line.assert_has_calls([call(i) for i in range(32, -1, -1)])
 
-        screen_buffer.draw()
-        main_screen.do_draw.assert_called_with(0, 0)
-        gps_screen.do_draw.assert_called_with(0, 32)
+        panel_buffer.draw()
+        main_panel.do_draw.assert_called_with(0, 0)
+        gps_panel.do_draw.assert_called_with(0, 32)
 
 if __name__ == '__main__':
     unittest.main()

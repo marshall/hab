@@ -55,7 +55,7 @@ import time
 import font5x8
 import sys
 
-class SSD1306:
+class SSD1306(object):
 
     # Class constants are externally accessible as gaugette.ssd1306.SSD1306.CONST
     # or my_instance.CONST
