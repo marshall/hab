@@ -11,10 +11,11 @@ from test_pepper2 import MockPepper2Modules
 
 class MockPepper2(object):
     mock_stats = collections.deque([
-        '5.3\n25320k\n',
-        '20.1\n15320k\n',
-        '97.8\n5320k\n',
-        '3.7\n33322k\n'])
+        '{"uptime": 1147,"total_procs": 100,"cpu_usage": 1.2,"total_mem": 510840,"free_mem": 296748}\n',
+        '{"uptime": 1148,"total_procs": 101,"cpu_usage": 1.9,"total_mem": 510840,"free_mem": 29674}\n',
+        '{"uptime": 1149,"total_procs": 102,"cpu_usage": 8.2,"total_mem": 510840,"free_mem": 126748}\n',
+        '{"uptime": 1150,"total_procs": 99,"cpu_usage": 11.2,"total_mem": 510840,"free_mem": 6748}\n',
+        ])
 
     mock_gps = collections.deque([
         '$GPGGA,040552.000,3309.3605,N,09702.0045,W,1,11,0.81,164.9,M,-24.0,M,,*54',

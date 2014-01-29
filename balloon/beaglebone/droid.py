@@ -7,7 +7,7 @@ import time
 import bluetooth
 from pynmea import nmea, utils
 
-log = logging.getLogger('OBC.droid')
+log = logging.getLogger('droid')
 
 class DroidBluetooth(threading.Thread):
     daemon            = True

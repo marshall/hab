@@ -1,5 +1,6 @@
+import datetime
 import math
-from mock import patch, MagicMock, call
+from mock import patch, MagicMock, call, mock_open
 import os
 import sys
 import time
@@ -55,21 +56,22 @@ class OBCTest(NonNativeTestCase):
         self.modules.serial.Serial.return_value.readline = lambda: None
         self.modules.bluetooth.find_service.return_value = [{'host':'localhost', 'port':999}]
         self.modules.bluetooth.BluetoothSocket.return_value.recv = lambda *args: time.sleep(150)
-        self.modules.subprocess.check_output.return_value = '5.3\n265320k\n'
+        #self.modules.subprocess.check_output.return_value = '5.3\n265320k\n'
+        self.modules.subprocess.check_output.return_value = '{"uptime": 1147,"total_procs": 100,"cpu_usage": 1.2,"total_mem": 510840,"free_mem": 296748}'
 
     @patch('pepper2.time.time')
     def test_uptime(self, mock_time):
         mock_time.return_value = 0
         obc = self.pepper2.OBC()
-        obc.sensor_update()
+        obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=0, minutes=0, seconds=0))
 
         mock_time.return_value = 1
-        obc.sensor_update()
+        obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=0, minutes=0, seconds=1))
 
         mock_time.return_value = 3901
-        obc.sensor_update()
+        obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=1, minutes=5, seconds=1))
 
     @patch('pepper2.OBC.on_landed')
@@ -181,27 +183,44 @@ class GPSTest(NonNativeTestCase):
         self.assertEqual(gps.telemetry[1], gps.gpgga)
 
 class PanelTest(NonNativeTestCase):
-    def test_main_panel(self):
-        screen = MagicMock()
-        screen.font_width = 5
-        screen.font_height = 8
-        screen.height = 32
-        panel = self.screen.MainPanel(screen)
-        panel.template_args = dict(
-            current_time='0',
-            hours=1, minutes=1, seconds=1,
-            android='Y', radio='Y',
-            gps_qual=2, tmp=100.12,
-            gps_lat=33.134, gps_lng=-98.333,
-            gps_alt=0.123, droid_bt='Y'
+    def setUp(self):
+        super(PanelTest, self).setUp()
+        self.mock_screen = MagicMock(font_width=5, font_height=8, height=32)
+        now = datetime.datetime.now()
+        self.now_str = now.strftime('%m/%d %H:%M')
+        self.template_args = dict(
+            gps=MagicMock(quality=2, latitude=33.134, longitude=-98.333, altitude=0.123),
+            droid=MagicMock(connected=True),
+            obc=MagicMock(uptime_hr=1, uptime_min=1, uptime_sec=1),
+            temp=MagicMock(fahrenheit=100.12),
+            sys=MagicMock(cpu_usage=1.2, free_mem=32768, free_mem_mb=32),
+            now=now,
         )
+
+    def test_main_panel(self):
+        panel = self.screen.MainPanel(self.mock_screen)
+        panel.template_args = self.template_args
         panel.do_draw(0, 0)
 
-        screen.draw_text.assert_has_calls([
-            call(0, 0, '0 01h01m01s', invert=True),
-            call(0, 8, 'AND:Y RDO:Y GPS:2'),
+        self.mock_screen.draw_text.assert_has_calls([
+            call(0, 0, '%s 01h01m01s' % self.now_str, invert=True),
+            call(0, 8, 'AND:1 RDO:F GPS:2'),
             call(0, 16, 'TMP:+100.12F LAT:+33.1'),
             call(0, 24, 'LNG:-98.3 ALT:+0.1K')])
+
+    def test_sys_panel(self):
+        panel = self.screen.SysPanel(self.mock_screen)
+        panel.template_args = self.template_args
+        panel.do_draw(0, 0)
+
+        self.mock_screen.draw_text.assert_has_calls([
+            call(0, 1, 'SYS', size=2),
+            call(0, 21, '+100F', size=1),
+            call(37, 0, self.now_str),
+            call(37, 8, 'CPU 1.2%'),
+            call(37, 16, 'MEM 32MB free'),
+            call(37, 24, 'UP  01h 01m 01s')
+        ])
 
 class PanelBufferTest(NonNativeTestCase):
     def setUp(self):
@@ -261,6 +280,30 @@ class PanelBufferTest(NonNativeTestCase):
         panel_buffer.draw()
         main_panel.do_draw.assert_called_with(0, 0)
         gps_panel.do_draw.assert_called_with(0, 32)
+
+class TempTest(NonNativeTestCase):
+
+    @patch('pepper2.os.path.exists')
+    def test_temp_sensor(self, mock_exists):
+        mock_exists.return_value = True
+        with patch('pepper2.open', mock_open(read_data='dht22\n'), create=True) as m:
+            sensor = self.pepper2.TempSensor()
+
+        self.assertEqual(sensor.kmod_loaded, True)
+
+        def mock_read_sysfs(path):
+            if path.endswith('/temp'):
+                return '23300\n'
+            elif path.endswith('/humidity'):
+                return '19200\n'
+            return ''
+
+        sensor.read_sysfs_file = mock_read_sysfs
+        sensor.update()
+
+        self.assertEqual(sensor.celsius, 23.3)
+        self.assertEqual(sensor.fahrenheit, 73.94)
+        self.assertEqual(sensor.humidity, 19.2)
 
 if __name__ == '__main__':
     unittest.main()
