@@ -63,36 +63,12 @@ class Screen(object):
         self.panel = panel
 
     def build_template_args(self):
-        gps = self.obc.gps
-        droid = self.obc.droid
-        sys = self.obc.sys
-        '''args = self.obc.get_uptime()
-        args.update(sys.get_stats())
-        args.update(
-            current_time=time.strftime('%m/%d %H:%M'),
-            droid_bt=self.yn(droid.connected),
-            droid_battery=droid.battery,
-            droid_cell=self.yn(droid.radio),
-            droid_photos=droid.photo_count,
-            droid_lat=droid.latitude,
-            droid_lng=droid.longitude,
-            droid_alt=droid.altitude,
-            radio=self.yn(False),
-            temp=self.obc.temp.fahrenheit,
-            humidity=self.obc.temp.humidity,
-            gps_qual=gps.quality,
-            gps_lat=gps.latitude,
-            gps_lng=gps.longitude,
-            gps_alt=gps.altitude)
-        return args'''
-
-        return dict(
-            obc=self.obc,
-            sys=self.obc.sys,
-            gps=self.obc.gps,
-            droid=self.obc.droid,
-            temp=self.obc.temp,
-            now=datetime.datetime.now())
+        return dict(obc=self.obc,
+                    sys=self.obc.sys,
+                    gps=self.obc.gps,
+                    droid=self.obc.droid,
+                    temp=self.obc.temp,
+                    now=datetime.datetime.now())
 
     def update(self):
         template_args = self.build_template_args()
@@ -168,11 +144,6 @@ class MainPanel(Panel):
              'TMP:{temp.fahrenheit:+02.2f}F LAT:{gps.latitude:+02.1f}',
              'LNG:{gps.longitude:+02.1f} ALT:{gps.altitude:+02.1f}K')
 
-    #header = '%(current_time)s %(hours)02dh%(minutes)02dm%(seconds)02ds'
-    #lines  = ('AND:%(droid_bt)c RDO:%(radio)c GPS:%(gps_qual)s',
-    #          'TMP:%(temp)+02.2fF LAT:%(gps_lat)+02.1f',
-    #          'LNG:%(gps_lng)+02.1f ALT:%(gps_alt)+02.1fK')
-
     def draw(self):
         self.draw_lines([self.header], invert=True)
         self.draw_lines(self.lines)
@@ -182,11 +153,6 @@ class SysPanel(Panel):
              'CPU {sys.cpu_usage:02.1f}%',
              'MEM {sys.free_mem_mb:0.0f}MB free',
              'UP  {obc.uptime_hr:02d}h {obc.uptime_min:02d}m {obc.uptime_sec:02d}s')
-
-    #lines = ('%(current_time)s',
-    #         'CPU %(cpu_usage)02.1f%%',
-    #         'MEM %(free_mem)dMB free',
-    #         'UP  %(hours)02dh %(minutes)02dm %(seconds)02ds')
 
     def draw(self):
         self.draw_title('SYS')
@@ -198,11 +164,6 @@ class GPSPanel(Panel):
              'LAT  {gps.latitude:+02.5f}',
              'LNG  {gps.longitude:+02.5f}',
              'ALT  {gps.altitude:02.3f}K')
-
-    #lines = ('QUAL %(gps_qual)s',
-    #         'LAT  %(gps_lat)+02.5f',
-    #         'LNG  %(gps_lng)+02.5f',
-    #         'ALT  %(gps_alt)02.3fK')
 
     def draw(self):
         self.draw_title('GPS')
@@ -243,11 +204,6 @@ class DroidPanel(Panel):
              'PHOTOS {droid.photo_count}',
              'LAT {droid.latitude:+02.5f}',
              'LNG {droid.longitude:+02.5f}')
-
-    #lines = ('BAT %(droid_battery)d%% CELL %(droid_cell)s',
-    #         'PHOTOS %(droid_photos)d',
-    #         'LAT %(droid_lat)+02.5f',
-    #         'LNG %(droid_lng)+02.5f')
 
     def draw(self):
         for x in range(0, self.bitmap_width):
