@@ -56,7 +56,6 @@ class OBCTest(NonNativeTestCase):
         self.modules.serial.Serial.return_value.readline = lambda: None
         self.modules.bluetooth.find_service.return_value = [{'host':'localhost', 'port':999}]
         self.modules.bluetooth.BluetoothSocket.return_value.recv = lambda *args: time.sleep(150)
-        #self.modules.subprocess.check_output.return_value = '5.3\n265320k\n'
         self.modules.subprocess.check_output.return_value = '{"uptime": 1147,"total_procs": 100,"cpu_usage": 1.2,"total_mem": 510840,"free_mem": 296748}'
 
     @patch('pepper2.time.time')
