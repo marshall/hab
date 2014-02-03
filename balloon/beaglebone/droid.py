@@ -1,15 +1,15 @@
 import logging
 import socket
 import struct
-import threading
 import time
 
 import bluetooth
+import gevent
 from pynmea import nmea, utils
 
 log = logging.getLogger('droid')
 
-class DroidBluetooth(threading.Thread):
+class DroidBluetooth(gevent.Greenlet):
     daemon            = True
     bt_addr           = '0C:DF:A4:B1:D7:7A'
     service_uuid      = 'de746609-6dbf-4917-9040-40d1d2ce9c79'
@@ -38,7 +38,7 @@ class DroidBluetooth(threading.Thread):
         try:
             self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
             self.socket.connect(self.bt_host_port)
-            self.socket.settimeout(self.socket_timeout)
+            self.socket.setblocking(0)
             self.connected = True
         except (socket.error, bluetooth.BluetoothError) as e:
             if self.socket:
@@ -51,22 +51,23 @@ class DroidBluetooth(threading.Thread):
         if not self.ensure_connected():
             log.warn('Failed to connect, will try again in %d seconds',
                      self.reconnect_timeout)
-            time.sleep(self.reconnect_timeout)
+            gevent.sleep(self.reconnect_timeout)
             return
 
         lost_connection = False
         try:
+            gevent.socket.wait_read(self.socket.fileno())
             data = self.socket.recv(1024)
             if len(data) == 0:
                 lost_connection = True
-        except socket.timeout, e:
+        except (socket.timeout, socket.error) as e:
             lost_connection = True
 
         if lost_connection:
             log.warn('Bluetooth connection lost, will attempt to reconnect')
             self.connected = False
-            self.socket.close()
-            self.socket = None
+            self.gsocket.close()
+            self.socket = self.gsocket = None
             return
 
         self.handle_data(data)
@@ -84,7 +85,7 @@ class DroidBluetooth(threading.Thread):
         self.buffer = self.buffer[length+6:]
         self.droid.handle_message(length, msg_type, checksum, data)
 
-    def run(self):
+    def _run(self):
         while True:
             self.loop()
 
@@ -106,7 +107,6 @@ class Droid(object):
         self.photo_data = []
         self.photo_index = 0
         self.photo_chunk = 0
-        self.telemetry_lock = threading.Lock()
         self._disconnected_nmea = None
         self.droid_bt = DroidBluetooth(self)
         self.droid_bt.start()
@@ -148,14 +148,12 @@ class Droid(object):
         self.longitude = float(droid_data[6])
         self.altitude = float(droid_data[7])
 
-        with self.telemetry_lock:
-            self.droid_telemetry = self.obc.build_nmea('D', data)
+        self.droid_telemetry = self.obc.build_nmea('D', data)
 
     def handle_photo_data(self, data):
-        photo_index, photo_chunk = struct.unpack('!BB', data[:2])
-        with self.telemetry_lock:
-            self.photo_data.append(self.obc.build_nmea('DP',
-                '%d,%d,%s' % (photo_index, photo_chunk, data[2:])))
+        photo_index, photo_chunk, chunk_count = struct.unpack('!BBB', data[:3])
+        self.photo_data.append(self.obc.build_nmea('DP',
+            '%d,%d,%d,%s' % (photo_index, photo_chunk, chunk_count, data[3:])))
 
     @property
     def connected(self):
@@ -164,23 +162,22 @@ class Droid(object):
     @property
     def disconnected_nmea(self):
         if not self._disconnected_nmea:
-            self._disconnected_nmea = self.obc.build_nmea('D', 'DISCONNECTED')
+            self._disconnected_nmea = [self.obc.build_nmea('D', 'DISCONNECTED')]
 
         return self._disconnected_nmea
 
     @property
     def telemetry(self):
         if not self.droid_bt.connected:
-            return [self.disconnected_nmea]
+            return self.disconnected_nmea
 
         t = []
-        with self.telemetry_lock:
-            if self.droid_telemetry:
-                t.append(self.droid_telemetry)
-                self.droid_telemetry = None
+        if self.droid_telemetry:
+            t.append(self.droid_telemetry)
+            self.droid_telemetry = None
 
-            if len(self.photo_data) > 0:
-                t.extend(self.photo_data)
-                self.photo_data = []
+        if len(self.photo_data) > 0:
+            t.extend(self.photo_data)
+            self.photo_data = []
 
         return t

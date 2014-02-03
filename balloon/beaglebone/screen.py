@@ -2,6 +2,7 @@ import datetime
 import logging
 import time
 
+import gevent
 import ssd1306
 
 class Screen(object):
@@ -10,8 +11,8 @@ class Screen(object):
     reset_pin  = 'P9_13'
     dc_pin     = 'P9_15'
 
-    update_interval = 1
-    switch_interval = 5
+    update_interval = 1.0
+    switch_interval = 5.0
 
     def __init__(self, obc):
         self.logger = logging.getLogger('screen')
@@ -27,8 +28,8 @@ class Screen(object):
         self.font_height = self.oled.font.rows
 
         self.oled.begin()
-        self.timers = obc.start_timers((self.update_interval, self.update),
-                                       (self.switch_interval, self.next_active_panel))
+        obc.start_timers((self.update_interval, self.update),
+                         (self.switch_interval, self.next_active_panel))
 
     def yn(self, val):
         return 'Y' if val else 'N'
@@ -260,7 +261,7 @@ class PanelBuffer(object):
             self.panels[self.active] = panel
             panel.in_buffer = True
             self.screen.clear_display()
-            panel.do_draw(0, self.active * self.screen.height)
+            self.draw()
             self.screen.display()
 
         start_y = self.inactive * self.screen.height

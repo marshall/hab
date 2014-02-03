@@ -29,6 +29,7 @@ import android.os.Message;
 import android.telephony.CellInfo;
 import android.telephony.CellInfoGsm;
 import android.telephony.TelephonyManager;
+import android.util.Base64;
 import android.util.Log;
 
 public class Pepper2Droid implements Runnable, LocationListener, Handler.Callback {
@@ -59,7 +60,7 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
     private int mRadioLevel;
     private String mTelemetry;
     private long mLastTelemetry = 0, mLastPhoto = 0, mLastPhotoData = 0;
-    private int mPhotoIndex = 0, mPhotoChunk = 0, mPhotoCount = 0;
+    private int mPhotoIndex = 0, mPhotoChunk = 0, mPhotoCount = 0, mChunkCount = 0;
     private boolean mSendingChunks = true;
     private byte mPhotoChunkBuffer[] = new byte[PHOTO_CHUNK_SIZE];
 
@@ -199,6 +200,11 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
             return;
         }
 
+        mChunkCount = (int) f.length() / PHOTO_CHUNK_SIZE;
+        if (f.length() % PHOTO_CHUNK_SIZE > 0) {
+            mChunkCount++;
+        }
+
         try {
             FileInputStream stream = new FileInputStream(f);
             if (mPhotoChunk > 0) {
@@ -216,8 +222,10 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
             ByteArrayOutputStream a85Bytes = new ByteArrayOutputStream(255);
             a85Bytes.write(mPhotoIndex);
             a85Bytes.write(mPhotoChunk);
-            ASCII85OutputStream a85out = new ASCII85OutputStream(a85Bytes);
-            a85out.write(mPhotoChunkBuffer);
+            a85Bytes.write(mChunkCount);
+            a85Bytes.write(Base64.encode(mPhotoChunkBuffer, Base64.NO_WRAP));
+            //ASCII85OutputStream a85out = new ASCII85OutputStream(a85Bytes);
+            //a85out.write(mPhotoChunkBuffer);
 
             byte chunk[] = a85Bytes.toByteArray();
 
