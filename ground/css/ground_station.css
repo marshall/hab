@@ -1,0 +1,42 @@
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: normal;
+  src: url(/fonts/OpenSans-Regular.ttf);
+}
+
+@font-face {
+  font-family: 'Open Sans';
+  font-style: normal;
+  font-weight: bold;
+  src: url(/fonts/OpenSans-Bold.ttf);
+}
+
+body {
+    padding: 0 15px;
+}
+
+* {
+    font-family: 'Open Sans';
+}
+
+h3 {
+    font-size: 0.75em;
+}
+
+.data {
+    font-size: 0.75em;
+}
+
+th, .data-label {
+    font-size: 0.75em;
+    font-weight: bold;
+}
+
+.progress-bar-incomplete {
+    background-color: #ffefef;
+}
+
+#droid_photo_progress, #droid_chunk_progress {
+    display: none;
+}
