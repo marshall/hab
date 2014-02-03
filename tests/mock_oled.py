@@ -1,7 +1,8 @@
 import logging
 import pygame
-import ssd1306
 import sys
+
+from pepper2 import ssd1306
 
 class MockOLED(ssd1306.SSD1306):
     width  = 128

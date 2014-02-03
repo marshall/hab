@@ -7,6 +7,8 @@ import bluetooth
 import gevent
 from pynmea import nmea, utils
 
+import hab_utils
+
 log = logging.getLogger('droid')
 
 class DroidBluetooth(gevent.Greenlet):
@@ -114,12 +116,6 @@ class Droid(object):
     def msg_type(self, msg_type_idx):
         return self.msg_types[msg_type_idx - 100]
 
-    def checksum(self, data):
-        ck = 0
-        for ch in data:
-            ck ^= ord(ch)
-        return ck
-
     def handle_message(self, length, msg_type, checksum, data):
         handler = self.handlers.get(msg_type)
         if not handler:
@@ -131,7 +127,7 @@ class Droid(object):
                       self.msg_type(msg_type), len(data), length)
             return
 
-        data_checksum = self.checksum(data)
+        data_checksum = hab_utils.checksum(data)
         if data_checksum != checksum:
             log.error('Checksum mismatch for %s: Got 0x%02X expected 0x%02X',
                       self.msg_type(msg_type), data_checksum, checksum)

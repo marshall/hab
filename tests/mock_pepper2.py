@@ -33,17 +33,15 @@ class MockPepper2(object):
         self.modules = MockPepper2Modules()
         self.patcher = self.modules.patch()
         self.patcher.start()
-        import pepper2, droid
+        import pepper2
         self.pepper2 = pepper2
-        self.droid = droid
 
         self.modules.bluetooth.find_service.return_value = [{'host':'localhost', 'port':999}]
-        #self.modules.bluetooth.BluetoothSocket.return_value.recv = self.mock_bt_recv
         self.modules.subprocess.check_output = self.mock_rotate_get(self.mock_stats)
         self.modules.serial.Serial.return_value.readline = self.mock_rotate_get(self.mock_gps)
-        droid.DroidBluetooth = MagicMock()
-        droid.DroidBluetooth.return_value.start = lambda: gevent.spawn_later(5, self.mock_bluetooth)
-        droid.DroidBluetooth.return_value.connected = True
+        pepper2.droid.DroidBluetooth = MagicMock()
+        pepper2.droid.DroidBluetooth.return_value.start = lambda: gevent.spawn_later(5, self.mock_bluetooth)
+        pepper2.droid.DroidBluetooth.return_value.connected = True
 
     def mock_rotate_get(self, deque):
         return lambda *args, **kwargs: self.rotate_get(deque)
@@ -64,16 +62,15 @@ class MockPepper2(object):
             msg_type = self.obc.droid.msg_photo_data
 
         self.obc.droid.handle_message(len(next_msg[1]), msg_type,
-                                      self.obc.droid.checksum(next_msg[1]),
+                                      self.pepper2.hab_utils.checksum(next_msg[1]),
                                       next_msg[1])
         gevent.spawn_later(5, self.mock_bluetooth)
 
     def main_loop(self):
         import mock_oled
-        self.obc = self.pepper2.OBC()
+        self.obc = self.pepper2.obc.OBC()
         self.obc.screen.oled = mock_oled.MockOLED()
         self.obc.screen.oled.begin()
-        #self.obc.droid.droid_bt.handle_data = self.mock_bt_handle
         self.obc.main_loop()
 
     def __del__(self):

@@ -1,3 +1,5 @@
+from gevent import monkey; monkey.patch_all()
+
 import datetime
 import math
 from mock import patch, MagicMock, call, mock_open
@@ -44,9 +46,8 @@ class NonNativeTestCase(unittest.TestCase):
         self.modules = MockPepper2Modules()
         self.patcher = self.modules.patch()
         self.patcher.start()
-        import pepper2, screen
+        import pepper2
         self.pepper2 = pepper2
-        self.screen = screen
 
         self.addCleanup(self.patcher.stop)
 
@@ -58,10 +59,10 @@ class OBCTest(NonNativeTestCase):
         self.modules.bluetooth.BluetoothSocket.return_value.recv = lambda *args: time.sleep(150)
         self.modules.subprocess.check_output.return_value = '{"uptime": 1147,"total_procs": 100,"cpu_usage": 1.2,"total_mem": 510840,"free_mem": 296748}'
 
-    @patch('pepper2.time.time')
+    @patch('pepper2.obc.time.time')
     def test_uptime(self, mock_time):
         mock_time.return_value = 0
-        obc = self.pepper2.OBC()
+        obc = self.pepper2.obc.OBC()
         obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=0, minutes=0, seconds=0))
 
@@ -73,11 +74,11 @@ class OBCTest(NonNativeTestCase):
         obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=1, minutes=5, seconds=1))
 
-    @patch('pepper2.OBC.on_landed')
-    @patch('pepper2.OBC.on_descent')
-    @patch('pepper2.OBC.on_ascent')
+    @patch('pepper2.obc.OBC.on_landed')
+    @patch('pepper2.obc.OBC.on_descent')
+    @patch('pepper2.obc.OBC.on_ascent')
     def test_mode(self, on_ascent, on_descent, on_landed):
-        obc = self.pepper2.OBC()
+        obc = self.pepper2.obc.OBC()
         self.assertEqual(obc.mode, obc.mode_preflight)
 
         # no new locations
@@ -116,7 +117,7 @@ class OBCTest(NonNativeTestCase):
         self.assertTrue(on_landed.called)
 
     def test_build_nmea(self):
-        obc = self.pepper2.OBC()
+        obc = self.pepper2.obc.OBC()
 
         # http://www.hhhh.org/wiml/proj/nmeaxor.html
         nmea = obc.build_nmea('ABC', '1,2,3')
@@ -132,16 +133,16 @@ class GPSTest(NonNativeTestCase):
     def test_init(self):
         serial_write = self.modules.serial.Serial.return_value.write
 
-        gps = self.pepper2.GPS()
-        serial_write.assert_has_calls([call(self.pepper2.GPS.init_sentences[0] + '\r\n'),
-                                       call(self.pepper2.GPS.init_sentences[1] + '\r\n')])
+        gps = self.pepper2.gps.GPS()
+        serial_write.assert_has_calls([call(self.pepper2.gps.GPS.init_sentences[0] + '\r\n'),
+                                       call(self.pepper2.gps.GPS.init_sentences[1] + '\r\n')])
 
     def test_gpgga(self):
         serial_readline = self.modules.serial.Serial.return_value.readline
         serial_readline.return_value = \
             '$GPGGA,040552.000,3309.3605,N,09702.0045,W,1,11,0.81,164.9,M,-24.0,M,,*54'
 
-        gps = self.pepper2.GPS()
+        gps = self.pepper2.gps.GPS()
         gps.update()
 
         self.assertTrue(gps.gpgga is not None)
@@ -157,7 +158,7 @@ class GPSTest(NonNativeTestCase):
         serial_readline.return_value = \
             '$GPRMC,040552.000,A,3309.3605,N,09702.0045,W,0.28,42.54,220114,,,A*47'
 
-        gps = self.pepper2.GPS()
+        gps = self.pepper2.gps.GPS()
         gps.update()
 
         self.assertEqual(gps.gprmc, serial_readline.return_value)
@@ -165,7 +166,7 @@ class GPSTest(NonNativeTestCase):
 
     def test_telemetry(self):
         serial_readline = self.modules.serial.Serial.return_value.readline
-        gps = self.pepper2.GPS()
+        gps = self.pepper2.gps.GPS()
 
         serial_readline.return_value = \
             '$GPGGA,040552.000,3309.3605,N,09702.0045,W,1,11,0.81,164.9,M,-24.0,M,,*54'
@@ -197,7 +198,7 @@ class PanelTest(NonNativeTestCase):
         )
 
     def test_main_panel(self):
-        panel = self.screen.MainPanel(self.mock_screen)
+        panel = self.pepper2.screen.MainPanel(self.mock_screen)
         panel.template_args = self.template_args
         panel.do_draw(0, 0)
 
@@ -208,7 +209,7 @@ class PanelTest(NonNativeTestCase):
             call(0, 24, 'LNG:-98.3 ALT:+0.1K')])
 
     def test_sys_panel(self):
-        panel = self.screen.SysPanel(self.mock_screen)
+        panel = self.pepper2.screen.SysPanel(self.mock_screen)
         panel.template_args = self.template_args
         panel.do_draw(0, 0)
 
@@ -233,16 +234,16 @@ class PanelBufferTest(NonNativeTestCase):
         self.obc.get_uptime.return_value = dict(hours=1,minutes=1,seconds=1)
         self.obc.droid.connected = False
 
-    @patch('pepper2.time.sleep')
-    @patch('screen.GPSPanel')
-    @patch('screen.SysPanel')
-    @patch('screen.MainPanel')
+    @patch('pepper2.screen.time.sleep')
+    @patch('pepper2.screen.GPSPanel')
+    @patch('pepper2.screen.SysPanel')
+    @patch('pepper2.screen.MainPanel')
     def test_switch_screen(self, MainPanel, SysPanel, GPSPanel, mock_sleep):
         main_panel = MainPanel.return_value
         sys_panel = SysPanel.return_value
         gps_panel = GPSPanel.return_value
 
-        oled = self.screen.Screen(self.obc)
+        oled = self.pepper2.screen.Screen(self.obc)
         panel_buffer = oled.panel_buffer
         oled.set_start_line = MagicMock()
 
@@ -281,12 +282,11 @@ class PanelBufferTest(NonNativeTestCase):
         gps_panel.do_draw.assert_called_with(0, 32)
 
 class TempTest(NonNativeTestCase):
-
-    @patch('pepper2.os.path.exists')
+    @patch('pepper2.temp_sensor.os.path.exists')
     def test_temp_sensor(self, mock_exists):
         mock_exists.return_value = True
-        with patch('pepper2.open', mock_open(read_data='dht22\n'), create=True) as m:
-            sensor = self.pepper2.TempSensor()
+        with patch('pepper2.temp_sensor.open', mock_open(read_data='dht22\n'), create=True) as m:
+            sensor = self.pepper2.temp_sensor.TempSensor()
 
         self.assertEqual(sensor.kmod_loaded, True)
 
