@@ -43,7 +43,7 @@ class Radio(object):
             # These are logged in proto for now
             pass
 
-    def handle_msg(self):
+    def handle_msg(self, msg):
         # TODO handle msg
         # self.obc.droid.set_photo_index(sentence.photo_index)
         pass
