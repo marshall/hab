@@ -2,14 +2,14 @@ import argparse
 import logging
 import os
 
-import radio
-import obc
-
 this_dir = os.path.abspath(os.path.dirname(__file__))
 
+logging.basicConfig(format='[%(asctime)s][%(name)s:%(levelname)s] %(message)s',
+                    level=logging.INFO)
+
 def main():
-    logging.basicConfig(format='[%(asctime)s][%(name)s:%(levelname)s] %(message)s',
-                        level=logging.INFO)
+    import radio
+    import obc
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--tcp', action='store_true', default=False)

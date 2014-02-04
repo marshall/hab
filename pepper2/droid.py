@@ -8,6 +8,7 @@ import gevent
 from pynmea import nmea, utils
 
 import hab_utils
+import proto
 
 log = logging.getLogger('droid')
 
@@ -144,12 +145,24 @@ class Droid(object):
         self.longitude = float(droid_data[6])
         self.altitude = float(droid_data[7])
 
-        self.droid_telemetry = self.obc.build_nmea('D', data)
+        self.droid_telemetry = proto.DroidTelemetryMsg.from_data(
+            battery=self.battery,
+            radio=self.radio,
+            photo_count=self.photo_count,
+            latitude=self.latitude,
+            longitude=self.longitude,
+            altitude=self.altitude)
+
+        #self.droid_telemetry = self.obc.build_nmea('D', data)
 
     def handle_photo_data(self, data):
-        photo_index, photo_chunk, chunk_count = struct.unpack('!BBB', data[:3])
-        self.photo_data.append(self.obc.build_nmea('DP',
-            '%d,%d,%d,%s' % (photo_index, photo_chunk, chunk_count, data[3:])))
+        photo_index, photo_chunk, chunk_count, file_size = struct.unpack('!BHHL', data[:3])
+        msg = proto.PhotoDataMsg.from_data(index=photo_index,
+                                           chunk=photo_chunk,
+                                           chunk_count=chunk_count,
+                                           file_size=file_size)
+        #self.photo_data.append(self.obc.build_nmea('DP',
+        #    '%d,%d,%d,%s' % (photo_index, photo_chunk, chunk_count, data[3:])))
 
     @property
     def connected(self):

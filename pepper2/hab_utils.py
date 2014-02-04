@@ -1,3 +1,4 @@
+import binascii
 import math
 
 def lat2float(value, dir):
@@ -40,3 +41,6 @@ def checksum(data):
     for ch in data:
         ck ^= ord(ch)
     return ck
+
+def crc32(data):
+    return binascii.crc32(data) & 0xffffffff

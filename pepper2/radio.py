@@ -7,15 +7,7 @@ from gevent.server import StreamServer
 from pynmea import nmea
 import serial
 
-@nmea.nmea_sentence
-class PPR2SP(nmea.NMEASentence):
-    ''' PEPPER-2 set photo command
-        relays the actively streaming photo index to the android device
-    '''
-
-    def __init__(self):
-        parse_map = (('Photo Index', 'photo_index'))
-        super(PPR2SP, self).__init__(parse_map)
+import proto
 
 class Radio(object):
     uart = 'UART5'
@@ -42,12 +34,24 @@ class Radio(object):
         gevent.socket.wait_write(self.serial.fileno())
         self.serial.write(str)
 
+    def next_msg(self, f):
+        try:
+            msg = self.reader.read(f)
+            if msg:
+                self.handle_msg(msg)
+        except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
+            # These are logged in proto for now
+            pass
+
+    def handle_msg(self):
+        # TODO handle msg
+        # self.obc.droid.set_photo_index(sentence.photo_index)
+        pass
+
     def radio_loop(self):
         while True:
             gevent.socket.wait_read(self.serial.fileno())
-            sentence = nmea.parse_sentence(self.serial.readline())
-            if isinstance(sentence, PPR2SP):
-                self.obc.droid.set_photo_index(sentence.photo_index)
+            self.next_msg(self.serial)
 
 class TCPRadio(Radio):
     def setup_radio(self):
@@ -63,9 +67,7 @@ class TCPRadio(Radio):
         self.socket = socket
         f = socket.makefile()
         while True:
-            sentence = nmea.parse_sentence(f.readline())
-            if isinstance(sentence, PPR2SP):
-                self.obc.droid.set_photo_index(sentence.photo_index)
+            self.next_msg(f)
 
     def radio_loop(self):
         self.server.serve_forever()

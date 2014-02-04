@@ -46,7 +46,7 @@ class NonNativeTestCase(unittest.TestCase):
         self.modules = MockPepper2Modules()
         self.patcher = self.modules.patch()
         self.patcher.start()
-        import pepper2
+        import pepper2, pepper2.screen, pepper2.obc
         self.pepper2 = pepper2
 
         self.addCleanup(self.patcher.stop)
@@ -145,24 +145,11 @@ class GPSTest(NonNativeTestCase):
         gps = self.pepper2.gps.GPS()
         gps.update()
 
-        self.assertTrue(gps.gpgga is not None)
+        self.assertTrue(gps.location_msg is not None)
         self.assertNear(gps.latitude, 33.156008)
         self.assertNear(gps.longitude, -97.033408)
         self.assertNear(gps.altitude, 0.1649)
         self.assertEqual(len(gps.fixes), 1)
-
-    def test_gprmc(self):
-        serial_readline = self.modules.serial.Serial.return_value.readline
-
-        # http://www.hiddenvision.co.uk/ez/
-        serial_readline.return_value = \
-            '$GPRMC,040552.000,A,3309.3605,N,09702.0045,W,0.28,42.54,220114,,,A*47'
-
-        gps = self.pepper2.gps.GPS()
-        gps.update()
-
-        self.assertEqual(gps.gprmc, serial_readline.return_value)
-        self.assertEqual(len(gps.fixes), 0)
 
     def test_telemetry(self):
         serial_readline = self.modules.serial.Serial.return_value.readline
@@ -176,11 +163,11 @@ class GPSTest(NonNativeTestCase):
             '$GPRMC,040552.000,A,3309.3605,N,09702.0045,W,0.28,42.54,220114,,,A*47'
         gps.update()
 
-        self.assertTrue(gps.gpgga is not None)
-        self.assertTrue(gps.gprmc is not None)
-        self.assertEqual(len(gps.telemetry), 2)
-        self.assertEqual(gps.telemetry[0], gps.gprmc)
-        self.assertEqual(gps.telemetry[1], gps.gpgga)
+        self.assertTrue(gps.location_msg is not None)
+        self.assertEqual(len(gps.telemetry), 1)
+        self.assertNear(gps.telemetry[0].latitude, 33.156008)
+        self.assertNear(gps.telemetry[0].longitude, -97.033408)
+        self.assertNear(gps.telemetry[0].altitude, 0.1649)
 
 class PanelTest(NonNativeTestCase):
     def setUp(self):

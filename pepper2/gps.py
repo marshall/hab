@@ -7,6 +7,7 @@ from pynmea import nmea
 import serial
 
 import hab_utils
+import proto
 
 class GPS(object):
     uart = 'UART1'
@@ -21,7 +22,7 @@ class GPS(object):
     def __init__(self):
         self.log = logging.getLogger('gps')
         self.latitude = self.longitude = self.altitude = self.quality = 0
-        self.gpgga = self.gprmc = None
+        self.location_msg = None
         self.fixes = collections.deque([], self.fix_count)
 
         self.log.debug('setting up')
@@ -39,12 +40,6 @@ class GPS(object):
             return
 
         sentence = nmea.parse_sentence(line)
-
-        if isinstance(sentence, nmea.GPGGA):
-            self.gpgga = line.strip()
-        elif isinstance(sentence, nmea.GPRMC):
-            self.gprmc = line.strip()
-
         if not isinstance(sentence, nmea.GPGGA):
             return
 
@@ -61,6 +56,10 @@ class GPS(object):
             self.altitude = float(sentence.antenna_altitude) / 1000.0
 
         self.quality = int(sentence.gps_qual)
+        self.location_msg = proto.LocationMsg.from_data(latitude=self.latitude,
+                                                        longitude=self.longitude,
+                                                        altitude=self.altitude,
+                                                        quality=self.quality)
         self.fixes.append((self.latitude, self.longitude, self.altitude, self.quality))
 
     def update_timestamp(self, timestamp):
@@ -72,11 +71,8 @@ class GPS(object):
 
     @property
     def telemetry(self):
-        t = []
-        if self.gprmc:
-            t.append(self.gprmc)
-        if self.gpgga:
-            t.append(self.gpgga)
-        return t
+        if self.location_msg:
+            return [self.location_msg]
+        return []
 
 

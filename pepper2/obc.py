@@ -8,8 +8,9 @@ import time
 import gevent
 import pynmea
 
-import gps
 import droid
+import gps
+import proto
 import radio
 import screen
 import temp_sensor
@@ -127,13 +128,16 @@ class OBC(object):
     def send_all_telemetry(self):
         for telemetry_list in (self.droid.telemetry, self.gps.telemetry):
             for telemetry in telemetry_list:
-                self.radio.write_line(telemetry)
+                self.radio.write(telemetry.as_buffer())
 
-        sentence = self.telemetry_format.format(uptime=time.time() - self.begin,
-                                                mode=self.modes[self.mode],
-                                                sys=self.sys,
-                                                temp=self.temp)
-        self.radio.write_line(self.build_nmea('T', sentence))
+        telemetry = proto.TelemetryMsg.from_data(uptime=int(time.time() - self.begin),
+                                                 mode=self.mode,
+                                                 cpu_usage=int(self.sys.cpu_usage),
+                                                 free_mem=int(self.sys.free_mem),
+                                                 temperature=int(self.temp),
+                                                 humidity=int(self.humidity))
+
+        self.radio.write(telemetry.as_buffer())
 
     def start_timers(self, *timers):
         obc_timers = []
