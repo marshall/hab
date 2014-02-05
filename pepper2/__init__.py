@@ -1,7 +1,6 @@
 import logging
 import os
 
-this_dir = os.path.abspath(os.path.dirname(__file__))
+import main
 
-logging.basicConfig(format='[%(asctime)s][%(name)s:%(levelname)s] %(message)s',
-                    level=logging.INFO)
+main.setup_logging()

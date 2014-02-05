@@ -18,7 +18,11 @@ class Radio(object):
         self.logger = logging.getLogger('radio')
         self.obc = obc
         self.setup_radio()
+        self.running = False
         gevent.spawn(self.radio_loop)
+
+    def shutdown(self):
+        self.running = False
 
     def setup_radio(self):
         UART.setup(self.uart)
@@ -49,11 +53,18 @@ class Radio(object):
         pass
 
     def radio_loop(self):
-        while True:
+        self.running = True
+        while self.running:
             gevent.socket.wait_read(self.serial.fileno())
             self.next_msg(self.serial)
 
 class TCPRadio(Radio):
+    def shutdown(self):
+        super(TCPRadio, self).shutdown()
+        if self.socket:
+            self.socket.close()
+        self.server.stop()
+
     def setup_radio(self):
         self.server = StreamServer(('0.0.0.0', 12345), self.connection)
         self.socket = None
@@ -66,7 +77,7 @@ class TCPRadio(Radio):
     def connection(self, socket, addr):
         self.socket = socket
         f = socket.makefile()
-        while True:
+        while self.running:
             self.next_msg(f)
 
     def radio_loop(self):

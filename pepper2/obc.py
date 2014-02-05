@@ -9,11 +9,13 @@ import gevent
 import pynmea
 
 import droid
-import gps
+#import gps
 import proto
+from proto import TelemetryMsg, LocationMsg
 import radio
 import screen
-import temp_sensor
+import sensors
+#import temp_sensor
 
 this_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -22,25 +24,33 @@ class Timer(object):
         self.log = logging.getLogger('timer')
         self.interval = interval
         self.fn = fn
+        self.running = False
 
     def start(self):
+        self.running = True
         gevent.spawn_later(self.interval, self)
 
+    def stop(self):
+        self.running = False
+
     def __call__(self):
+        if not self.running:
+            return
+
         self.log.debug('calling ' + self.fn.__name__)
         self.fn()
         gevent.spawn_later(self.interval, self)
 
 class OBC(object):
-    modes = ('preflight', 'ascent', 'descent', 'landed')
-    mode_preflight  = 0
-    mode_ascent     = 1
-    mode_descent    = 2
-    mode_landed     = 3
+    modes = TelemetryMsg.modes
+    mode_preflight  = TelemetryMsg.mode_preflight
+    mode_ascent     = TelemetryMsg.mode_ascent
+    mode_descent    = TelemetryMsg.mode_descent
+    mode_landed     = TelemetryMsg.mode_landed
 
     sensor_interval        = 0.3
     sys_interval           = 1.0
-    telemetry_interval     = 5.0
+    msg_interval           = 5.0
 
     telemetry_format = '{uptime:0.0f},{mode},{sys.cpu_usage:02.1f},' \
                        '{sys.free_mem_mb:02.1f},{temp.fahrenheit:+0.1f}F,' \
@@ -54,25 +64,40 @@ class OBC(object):
         self.mode = self.mode_preflight
         self.log = logging.getLogger('obc')
         self.sys = System()
-        self.gps = gps.GPS()
+        #self.gps = gps.GPS()
         self.radio = radio_type(self)
         self.screen = screen.Screen(self)
+        self.sensors = sensors.Sensors()
         self.droid = droid.Droid(self)
-        self.temp = temp_sensor.TempSensor()
+        #self.temp = temp_sensor.TempSensor()
+        self.running = False
 
         self.start_timers((self.sensor_interval, self.sensor_update),
                           (self.sys_interval, self.sys_update),
-                          (self.telemetry_interval, self.send_all_telemetry))
+                          (self.msg_interval, self.send_all_messages))
 
         self.log.info('OBC booted in %0.2f seconds', time.time() - self.begin)
+
+    def shutdown(self):
+        self.running = False
+        for timer in self.timers:
+            timer.stop()
+
+        self.droid.shutdown()
+        self.radio.shutdown()
+        self.sensors.shutdown()
+
+    def __del__(self):
+        self.shutdown()
 
     def get_uptime(self):
         return dict(hours=self.uptime_hr, minutes=self.uptime_min,
                     seconds=self.uptime_sec)
 
     def main_loop(self):
-        while True:
-            gevent.sleep(5)
+        self.running = True
+        while self.running:
+            gevent.sleep(2)
 
     def sys_update(self):
         now = time.time()
@@ -84,9 +109,11 @@ class OBC(object):
         self.sys.update()
 
     def sensor_update(self):
-        self.gps.update()
-        self.temp.update()
-        self.maybe_update_mode()
+        #self.gps.update()
+        #self.temp.update()
+        #self.maybe_update_mode()
+        # TODO find a way to update mode more accurately
+        pass
 
     def maybe_update_mode(self):
         if len(self.gps.fixes) != self.gps.fix_count:
@@ -125,19 +152,32 @@ class OBC(object):
         ppr2_nmea += '*' + pynmea.utils.checksum_calc(ppr2_nmea)
         return ppr2_nmea
 
-    def send_all_telemetry(self):
-        for telemetry_list in (self.droid.telemetry, self.gps.telemetry):
-            for telemetry in telemetry_list:
-                self.radio.write(telemetry.as_buffer())
+    def send_message(self, msg, **kwargs):
+        if not isinstance(msg, proto.Msg):
+            msg = msg.from_data(**kwargs)
 
-        telemetry = proto.TelemetryMsg.from_data(uptime=int(time.time() - self.begin),
-                                                 mode=self.mode,
-                                                 cpu_usage=int(self.sys.cpu_usage),
-                                                 free_mem=int(self.sys.free_mem),
-                                                 temperature=int(self.temp),
-                                                 humidity=int(self.humidity))
+        self.log.info(str(msg))
+        self.radio.write(msg.as_buffer())
 
-        self.radio.write(telemetry.as_buffer())
+    def send_all_messages(self):
+        for message in self.droid.telemetry:
+            self.send_message(message)
+
+        self.send_message(TelemetryMsg,
+                          uptime=int(time.time() - self.begin),
+                          mode=self.mode,
+                          cpu_usage=int(self.sys.cpu_usage),
+                          free_mem=int(self.sys.free_mem/1024),
+                          temperature=int(self.sensors.internal_temp),
+                          humidity=int(self.sensors.internal_humidity))
+
+        self.send_message(LocationMsg,
+                          latitude=self.sensors.gps_latitude,
+                          longitude=self.sensors.gps_longitude,
+                          altitude=self.sensors.gps_altitude,
+                          quality=self.sensors.gps_quality,
+                          satellites=self.sensors.gps_satellites,
+                          speed=self.sensors.gps_speed)
 
     def start_timers(self, *timers):
         obc_timers = []

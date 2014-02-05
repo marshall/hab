@@ -46,7 +46,7 @@ class NonNativeTestCase(unittest.TestCase):
         self.modules = MockPepper2Modules()
         self.patcher = self.modules.patch()
         self.patcher.start()
-        import pepper2, pepper2.screen, pepper2.obc
+        import pepper2, pepper2.droid, pepper2.screen, pepper2.obc, pepper2.proto
         self.pepper2 = pepper2
 
         self.addCleanup(self.patcher.stop)
@@ -58,6 +58,10 @@ class OBCTest(NonNativeTestCase):
         self.modules.bluetooth.find_service.return_value = [{'host':'localhost', 'port':999}]
         self.modules.bluetooth.BluetoothSocket.return_value.recv = lambda *args: time.sleep(150)
         self.modules.subprocess.check_output.return_value = '{"uptime": 1147,"total_procs": 100,"cpu_usage": 1.2,"total_mem": 510840,"free_mem": 296748}'
+        self.obc = self.pepper2.obc.OBC()
+
+    def tearDown(self):
+        self.obc.shutdown()
 
     @patch('pepper2.obc.time.time')
     def test_uptime(self, mock_time):
@@ -73,55 +77,88 @@ class OBCTest(NonNativeTestCase):
         mock_time.return_value = 3901
         obc.sys_update()
         self.assertEqual(obc.get_uptime(), dict(hours=1, minutes=5, seconds=1))
+        obc.shutdown()
 
     @patch('pepper2.obc.OBC.on_landed')
     @patch('pepper2.obc.OBC.on_descent')
     @patch('pepper2.obc.OBC.on_ascent')
     def test_mode(self, on_ascent, on_descent, on_landed):
-        obc = self.pepper2.obc.OBC()
-        self.assertEqual(obc.mode, obc.mode_preflight)
+        self.assertEqual(self.obc.mode, self.obc.mode_preflight)
 
         # no new locations
-        obc.maybe_update_mode()
-        self.assertEqual(obc.mode, obc.mode_preflight)
+        self.obc.maybe_update_mode()
+        self.assertEqual(self.obc.mode, self.obc.mode_preflight)
 
-        obc.gps.fixes = [
+        self.obc.gps.fixes = [
             (0, 0, 0.1),
             (0, 0, 0.11),
             (0, 0, 0.13),
             (0, 0, 0.15),
             (0, 0, 0.2)]
 
-        obc.maybe_update_mode()
-        self.assertEqual(obc.mode, obc.mode_ascent)
+        self.obc.maybe_update_mode()
+        self.assertEqual(self.obc.mode, self.obc.mode_ascent)
         self.assertTrue(on_ascent.called)
 
-        obc.gps.fixes = [
+        self.obc.gps.fixes = [
             (0, 0, 0.2),
             (0, 0, 0.15),
             (0, 0, 0.13),
             (0, 0, 0.11),
             (0, 0, 0.1)]
-        obc.maybe_update_mode()
-        self.assertEqual(obc.mode, obc.mode_descent)
+        self.obc.maybe_update_mode()
+        self.assertEqual(self.obc.mode, self.obc.mode_descent)
         self.assertTrue(on_descent.called)
 
-        obc.gps.fixes = [
+        self.obc.gps.fixes = [
             (0, 0, 0.1),
             (0, 0, 0.1001),
             (0, 0, 0.1002),
             (0, 0, 0.1001),
             (0, 0, 0.1002)]
-        obc.maybe_update_mode()
-        self.assertEqual(obc.mode, obc.mode_landed)
+        self.obc.maybe_update_mode()
+        self.assertEqual(self.obc.mode, self.obc.mode_landed)
         self.assertTrue(on_landed.called)
 
     def test_build_nmea(self):
-        obc = self.pepper2.obc.OBC()
-
         # http://www.hhhh.org/wiml/proj/nmeaxor.html
-        nmea = obc.build_nmea('ABC', '1,2,3')
+        nmea = self.obc.build_nmea('ABC', '1,2,3')
         self.assertEqual(nmea, '$PPR2ABC,1,2,3*3C')
+
+    def test_send_all_telemetry(self):
+        proto = self.pepper2.proto
+        self.obc.droid.shutdown()
+        self.obc.radio.shutdown()
+
+        self.obc.droid = MagicMock(telemetry=[proto.DroidTelemetryMsg.from_data(battery=100)])
+        self.obc.gps = MagicMock(telemetry=[proto.LocationMsg.from_data(latitude=100)])
+        self.obc.sys = MagicMock(cpu_usage=100, free_mem=100)
+        self.obc.radio = MagicMock()
+
+        self.obc.send_all_telemetry()
+        self.assertEqual(len(self.obc.radio.write.mock_calls), 3)
+
+        def getWriteBuf(i):
+            return self.obc.radio.write.mock_calls[i][1][0]
+
+        def assertMsgType(i, msg_type):
+            buf = getWriteBuf(i)
+            self.assertTrue(isinstance(buf, buffer))
+            self.assertEqual(buf[0:2], '\x9d\x9a')
+            return self.assertEqual(msg_type, ord(buf[2]))
+
+        assertMsgType(0, proto.DroidTelemetryMsg.TYPE)
+        assertMsgType(1, proto.LocationMsg.TYPE)
+        assertMsgType(2, proto.TelemetryMsg.TYPE)
+
+        droid_telemetry = proto.DroidTelemetryMsg(buf=getWriteBuf(0))
+        location = proto.LocationMsg(buf=getWriteBuf(1))
+        telemetry = proto.TelemetryMsg(buf=getWriteBuf(2))
+
+        self.assertEqual(droid_telemetry.battery, 100)
+        self.assertEqual(location.latitude, 100)
+        self.assertEqual(telemetry.cpu_usage, 100)
+        self.assertEqual(telemetry.free_mem, 100)
 
 class GPSTest(NonNativeTestCase):
     def assertNear(self, val1, val2, near=0.00001):

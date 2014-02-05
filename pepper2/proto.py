@@ -37,6 +37,8 @@ def msg_type(type_id):
         return msg_type
     return wrapper
 
+log = logging.getLogger('proto')
+
 class Msg(object):
     TYPE = -1
     data_struct = None
@@ -57,21 +59,26 @@ class Msg(object):
     header_end = begin_len + header_struct.size
 
     @classmethod
-    def validate_header(cls, buffer):
-        begin = cls.marker_struct.unpack_from(buffer)
+    def validate_header(cls, buf):
+        if not isinstance(buf, (str, buffer)):
+            buf = buffer(buf)
+
+        begin = cls.marker_struct.unpack_from(buf)
         if not begin or begin[0] != cls.begin:
             raise BadMarker(begin[0], cls.begin)
 
-
     @classmethod
-    def from_header_buffer(cls, buffer):
+    def from_header_buffer(cls, buf):
         global msg_types
-        cls.validate_header(buffer)
-        header = cls.header_tuple._make(cls.header_struct.unpack_from(buffer, cls.begin_len))
+        if not isinstance(buf, (str, buffer)):
+            buf = buffer(buf)
+
+        cls.validate_header(buf)
+        header = cls.header_tuple._make(cls.header_struct.unpack_from(buf, cls.begin_len))
         if header.msg_type not in msg_types:
             raise BadMsgType(header.msg_type)
 
-        msg = msg_types[header.msg_type](buf=buffer)
+        msg = msg_types[header.msg_type](buf=buf)
         return msg
 
     @classmethod
@@ -83,11 +90,19 @@ class Msg(object):
             if key not in kwargs:
                 kwargs[key] = val
 
-        return cls(msg_data=cls.data_struct.pack(*(kwargs[a[0]] for a in cls.data_attrs)))
+        try:
+            args = [kwargs.get(a[0], a[1]) for a in cls.data_attrs]
+            return cls(msg_data=cls.data_struct.pack(*args))
+        except:
+            log.error('Invalid data for %s struct %s: %s', cls.__name__,
+                                                           cls.data_struct.format,
+                                                           str(args))
+            return None
 
     def __init__(self, buf=None, msg_data=None):
-        self.buffer = buf or bytearray(self.max_msg_len)
-        self.buffer_len = 0
+        self._buffer = buf or bytearray(self.max_msg_len)
+        self._buffer_ro = buffer(self._buffer)
+        self._buffer_len = 0
         self.header_valid = False
         self.data_valid = False
         self.data_view = None
@@ -99,26 +114,44 @@ class Msg(object):
         if msg_data is not None:
             self.pack_data(msg_data)
 
+    def __str__(self):
+        return '%s[%d](%s)' % (self.__class__.__name__,
+                               self._buffer_len,
+                               self.data_attr_str())
+        #' '.join(['%x' % c for c in self._buffer[:self._buffer_len]]))
+        #return '%s{%s}' % (self.__class__.__name__, self.data_attr_str())
+
+    def data_attr_str(self):
+        if not self.data_attrs:
+            return ''
+
+        attr_strs = []
+        for name, _ in self.data_attrs:
+            attr_strs.append('%s=%s' % (name, repr(getattr(self, name))))
+
+        return ', '.join(attr_strs)
+
     def pack_data(self, msg_data):
         msg_data = msg_data or ''
-        self.marker_struct.pack_into(self.buffer, 0, self.begin)
-        self.header_struct.pack_into(self.buffer, self.begin_len, self.TYPE,
+        self.marker_struct.pack_into(self._buffer, 0, self.begin)
+        self.header_struct.pack_into(self._buffer, self.begin_len, self.TYPE,
                                      len(msg_data), hab_utils.crc32(msg_data))
 
         data_end = self.header_end + len(msg_data)
-        self.buffer[self.header_end:data_end] = msg_data
-        self.marker_struct.pack_into(self.buffer, data_end, self.end)
+        self._buffer[self.header_end:data_end] = msg_data
+        self.marker_struct.pack_into(self._buffer, data_end, self.end)
         self._get_header()
         self.validate_data()
 
     def as_buffer(self):
-        return buffer(self.buffer, 0, self.buffer_len)
+        return buffer(self._buffer, 0, self._buffer_len)
 
     def _get_header(self, check_begin=True):
         global msg_types
         if check_begin and not self.header_valid:
-            self.validate_header(self.buffer)
-            header = self.header_tuple._make(self.header_struct.unpack_from(self.buffer, self.begin_len))
+            self.validate_header(self._buffer)
+            values = self.header_struct.unpack_from(self._buffer_ro, self.begin_len)
+            header = self.header_tuple._make(values)
             if header.msg_type not in msg_types:
                 raise BadMsgType(header.msg_type)
 
@@ -140,14 +173,14 @@ class Msg(object):
 
     def validate_data(self):
         msg_type, msg_len, msg_crc32 = self._get_header()
-        self.data_view = buffer(self.buffer, self.header_end, msg_len)
+        self.data_view = buffer(self._buffer, self.header_end, msg_len)
         crc32 = hab_utils.crc32(self.data_view)
         if crc32 != msg_crc32:
             raise BadChecksum(crc32, msg_crc32)
 
         data_len = self.header_end + msg_len
-        self.buffer_len = data_len + self.end_len
-        end = self.marker_struct.unpack_from(self.buffer, data_len)
+        self._buffer_len = data_len + self.end_len
+        end = self.marker_struct.unpack_from(self._buffer_ro, data_len)
         if not end or end[0] != self.end:
             raise BadMarker(end[0], self.end)
 
@@ -173,25 +206,37 @@ class Msg(object):
 
 @msg_type(0)
 class LocationMsg(Msg):
-    data_struct = struct.Struct('!ddfB')
+    data_struct = struct.Struct('!ddfBBf')
     data_attrs  = (('latitude', 0), ('longitude', 0), ('altitude', 0),
-                   ('quality', 0))
+                   ('quality', 0), ('satellites', 0), ('speed', 0))
 
 @msg_type(1)
 class TelemetryMsg(Msg):
+    modes = ('preflight', 'ascent', 'descent', 'landed')
+    mode_preflight  = 0
+    mode_ascent     = 1
+    mode_descent    = 2
+    mode_landed     = 3
+
     data_struct = struct.Struct('!LBBHff')
     data_attrs  = (('uptime', 0), ('mode', 0), ('cpu_usage', 0),
                    ('free_mem', 0), ('temperature', 0), ('humidity', 0))
 
 @msg_type(2)
 class DroidTelemetryMsg(Msg):
-    data_struct = struct.Struct('!BBHddf')
-    data_attrs  = (('battery', 0), ('radio', 0), ('photo_count', 0),
-                   ('latitude', 0), ('longitude', 0), ('altitude', 0))
+    accel_states  = ('level', 'rising', 'falling')
+    accel_level   = 0
+    accel_rising  = 1
+    accel_falling = 2
+
+    data_struct = struct.Struct('!BBBHHdd')
+    data_attrs  = (('battery', 0), ('radio', 0), ('accel_state', 0),
+                   ('accel_duration', 0), ('photo_count', 0), ('latitude', 0),
+                   ('longitude', 0))
 
 @msg_type(3)
 class PhotoDataMsg(Msg):
-    data_struct = struct.Struct('!BHHL')
+    data_struct = struct.Struct('!HHHL')
     data_attrs = (('index', 0), ('chunk', 0), ('chunk_count', 0),
                   ('file_size', 0))
 
@@ -208,7 +253,7 @@ class PhotoDataMsg(Msg):
 
 @msg_type(10)
 class StartPhotoDataMsg(Msg):
-    data_struct = struct.Struct('!B')
+    data_struct = struct.Struct('!H')
     data_attrs = ('index')
 
 @msg_type(11)
@@ -219,6 +264,16 @@ class StopPhotoDataMsg(Msg):
 class SendTextMsg(Msg):
     pass
 
+@msg_type(13)
+class AddPhoneNumberMsg(Msg):
+    @classmethod
+    def from_phone_number(cls, phone_number):
+        return cls(msg_data=struct.pack('!%ds' % len(phone_number), phone_number))
+
+    @property
+    def phone_number(self):
+        return str(self.msg_data[:])
+
 class MsgReader(object):
     state_header = 0
     state_data   = 1
@@ -226,13 +281,15 @@ class MsgReader(object):
 
     def __init__(self):
         self.log = logging.getLogger('msg_reader')
+        self.buffer = bytearray(Msg.max_msg_len)
+        self.reset()
+
+    def reset(self):
         self.state = self.state_header
         self.msg = None
-        self.buffer = bytearray(Msg.max_msg_len)
         self.index = 0
 
     def read(self, f):
-        self.state = self.state_header
         while self.state != self.state_end:
             b = f.read(1)
             if b == '':
@@ -275,5 +332,3 @@ class MsgReader(object):
             self.index = 0
             self.state = self.state_header
             raise
-
-

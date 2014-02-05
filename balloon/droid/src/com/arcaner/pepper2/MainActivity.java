@@ -43,7 +43,6 @@ public class MainActivity extends Activity {
     @Override
     protected void onActivityResult(int requestCode, int resultCode, Intent data) {
         if (requestCode == PHOTO_RESULT) {
-            Log.i(TAG, "got photo result in MainActiivty");
             Message msg = Message.obtain(mPhotoHandler, mPhotoHandlerMsg);
             msg.arg1 = resultCode;
             msg.setData(data.getExtras());

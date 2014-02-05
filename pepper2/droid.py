@@ -23,8 +23,14 @@ class DroidBluetooth(gevent.Greenlet):
         super(DroidBluetooth, self).__init__()
         self.droid = droid
         self.buffer = []
+        self.reader = proto.MsgReader()
         self.connected = False
         self.socket = None
+        self.running = False
+
+    def stop(self):
+        self.running = False
+        self.kill()
 
     def ensure_connected(self):
         if self.connected and self.socket:
@@ -39,9 +45,11 @@ class DroidBluetooth(gevent.Greenlet):
         match = matches[0]
         self.bt_host_port = (match['host'], match['port'])
         try:
+            log.info('Connecting to %s port %s..', *self.bt_host_port)
             self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
             self.socket.connect(self.bt_host_port)
-            self.socket.setblocking(0)
+            #self.socket.setblocking(0)
+            self.socket_file = self.socket.makefile()
             self.connected = True
         except (socket.error, bluetooth.BluetoothError) as e:
             if self.socket:
@@ -60,133 +68,84 @@ class DroidBluetooth(gevent.Greenlet):
         lost_connection = False
         try:
             gevent.socket.wait_read(self.socket.fileno())
-            data = self.socket.recv(1024)
-            if len(data) == 0:
+            msg = self.reader.read(self.socket_file)
+            if not msg:
                 lost_connection = True
-        except (socket.timeout, socket.error) as e:
+        except (IOError, socket.timeout, socket.error) as e:
             lost_connection = True
+        except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
+            # these are "ok" -- logged upstream
+            pass
 
         if lost_connection:
             log.warn('Bluetooth connection lost, will attempt to reconnect')
             self.connected = False
-            self.gsocket.close()
-            self.socket = self.gsocket = None
+            self.socket = self.socket_file = None
+            self.reader.reset()
             return
 
-        self.handle_data(data)
-
-    def handle_data(self, data):
-        self.buffer.extend(data)
-        if len(self.buffer) < 6:
-            return
-
-        length, msg_type, checksum = struct.unpack('!BBL', ''.join(self.buffer[:6]))
-        if len(self.buffer) < length + 6:
-            return
-
-        data = ''.join(self.buffer[6:length+6])
-        self.buffer = self.buffer[length+6:]
-        self.droid.handle_message(length, msg_type, checksum, data)
+        self.droid.handle_message(msg)
 
     def _run(self):
-        while True:
+        self.running = True
+        while self.running:
             self.loop()
 
 class Droid(object):
-    msg_telemetry  = 100
-    msg_photo_data = 101
-    msg_types = ('Telemetry', 'PhotoData')
+    disconnected_msgs = [proto.DroidTelemetryMsg.from_data()]
 
     def __init__(self, obc, photo_dir=None):
         self.obc = obc
         self.handlers = {
-            self.msg_telemetry:  self.handle_telemetry,
-            self.msg_photo_data: self.handle_photo_data
+            proto.DroidTelemetryMsg.TYPE: self.handle_telemetry,
+            proto.PhotoDataMsg.TYPE     : self.handle_photo_data
         }
 
         self.battery = self.radio = self.photo_count = 0
-        self.latitude = self.longitude = self.altitude = 0
+        self.accel_state = self.accel_duration = 0
+        self.latitude = self.longitude = 0
         self.droid_telemetry = None
         self.photo_data = []
-        self.photo_index = 0
-        self.photo_chunk = 0
-        self._disconnected_nmea = None
         self.droid_bt = DroidBluetooth(self)
         self.droid_bt.start()
 
-    def msg_type(self, msg_type_idx):
-        return self.msg_types[msg_type_idx - 100]
+    def shutdown(self):
+        self.droid_bt.stop()
 
-    def handle_message(self, length, msg_type, checksum, data):
-        handler = self.handlers.get(msg_type)
+    def handle_message(self, msg):
+        handler = self.handlers.get(msg.msg_type)
         if not handler:
             log.error('Unknown Droid message type: %d', msg_type)
             return
 
-        if len(data) != length:
-            log.error('Length mismatch for %s: Got %d expected %d',
-                      self.msg_type(msg_type), len(data), length)
-            return
+        handler(msg)
 
-        data_checksum = hab_utils.checksum(data)
-        if data_checksum != checksum:
-            log.error('Checksum mismatch for %s: Got 0x%02X expected 0x%02X',
-                      self.msg_type(msg_type), data_checksum, checksum)
-            return
+    def handle_telemetry(self, msg):
+        for name, defval in msg.data_attrs:
+            setattr(self, name, getattr(msg, name))
 
-        handler(data)
+        self.droid_telemetry = msg
 
-    def handle_telemetry(self, data):
-        droid_data = data.split(',')
-        self.battery = float(droid_data[0])
-        self.radio = int(droid_data[1])
-        self.photo_count = int(droid_data[2])
-        self.latitude = float(droid_data[5])
-        self.longitude = float(droid_data[6])
-        self.altitude = float(droid_data[7])
-
-        self.droid_telemetry = proto.DroidTelemetryMsg.from_data(
-            battery=self.battery,
-            radio=self.radio,
-            photo_count=self.photo_count,
-            latitude=self.latitude,
-            longitude=self.longitude,
-            altitude=self.altitude)
-
-        #self.droid_telemetry = self.obc.build_nmea('D', data)
-
-    def handle_photo_data(self, data):
-        photo_index, photo_chunk, chunk_count, file_size = struct.unpack('!BHHL', data[:3])
-        msg = proto.PhotoDataMsg.from_data(index=photo_index,
-                                           chunk=photo_chunk,
-                                           chunk_count=chunk_count,
-                                           file_size=file_size)
-        #self.photo_data.append(self.obc.build_nmea('DP',
-        #    '%d,%d,%d,%s' % (photo_index, photo_chunk, chunk_count, data[3:])))
+    def handle_photo_data(self, msg):
+        '''self.photo_data.append(msg)'''
+        self.obc.send_message(msg)
 
     @property
     def connected(self):
         return self.droid_bt.connected
 
     @property
-    def disconnected_nmea(self):
-        if not self._disconnected_nmea:
-            self._disconnected_nmea = [self.obc.build_nmea('D', 'DISCONNECTED')]
-
-        return self._disconnected_nmea
-
-    @property
     def telemetry(self):
         if not self.droid_bt.connected:
-            return self.disconnected_nmea
+            return self.disconnected_msgs
 
         t = []
         if self.droid_telemetry:
             t.append(self.droid_telemetry)
             self.droid_telemetry = None
 
-        if len(self.photo_data) > 0:
+        '''if len(self.photo_data) > 0:
             t.extend(self.photo_data)
-            self.photo_data = []
+            self.photo_data = []'''
 
         return t

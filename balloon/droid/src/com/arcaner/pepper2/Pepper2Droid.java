@@ -1,22 +1,20 @@
 package com.arcaner.pepper2;
 
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
+import java.util.ArrayList;
 import java.util.List;
 
-import org.freehep.util.io.ASCII85OutputStream;
-
-import android.bluetooth.BluetoothSocket;
+import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
+import android.hardware.SensorManager;
 import android.location.Criteria;
 import android.location.Location;
 import android.location.LocationListener;
@@ -28,46 +26,81 @@ import android.os.Looper;
 import android.os.Message;
 import android.telephony.CellInfo;
 import android.telephony.CellInfoGsm;
+import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
-import android.util.Base64;
 import android.util.Log;
 
-public class Pepper2Droid implements Runnable, LocationListener, Handler.Callback {
-    private static final String TAG = "PEPPER-2";
+import com.arcaner.pepper2.proto.DroidTelemetry;
+import com.arcaner.pepper2.proto.PhotoData;
+import com.arcaner.pepper2.proto.ProtoMessage;
+
+public class Pepper2Droid extends Thread implements LocationListener, SensorEventListener {
+    public static enum AccelState {
+        LEVEL, RISING, FALLING
+    };
+
+    private static final String TAG = "PEPPER2-DROID";
+    private static final boolean DBG = false;
+
     private static final int TWO_MINUTES = 1000 * 60 * 2;
     private static final int TELEMETRY_INTERVAL = 5 * 1000;
     private static final int PHOTO_INTERVAL = 1000 * 60 * 5;
     private static final int PHOTO_CHUNK_INTERVAL = 1000;
-    private static final int PHOTO_CHUNK_SIZE = 190;
+    private static final int PHOTO_CHUNK_SIZE = ProtoMessage.MAX_DATA_LEN;
+    private static final int SMS_ALERT_INTERVAL = 1000 * 15; // TODO make this like 10 minutes
+    private static final int MIN_ACCEL_STABILITY = 1000 * 10;
+    private static final int ACCEL_SAMPLE_SIZE = 20;
+    private static final float ACCEL_RISING  =  1.1f;
+    private static final float ACCEL_FALLING = -1.1f;
 
-    private static final int MSG_TELEMETRY = 100;
-    private static final int MSG_PHOTO_DATA = 101;
+    private static final String SMS_SENT = "SMS_SENT";
+    private static final String SMS_DELIVERED = "SMS_DELIVERED";
+    private static final int MAX_SMS_MSG_LEN = 160;
+    private static final int SMS_MSG_COUNT = 2;
+    private static final String GMAPS_URL = "http://maps.google.com/maps?q=";
+    private static final String SMS_PHONE_NUMBER = "+12145006076";
 
-    private static final int CMD_START_PHOTO = 200;
-    private static final int CMD_STOP_PHOTO = 201;
+    private static final int MSG_UPDATE_TELEMETRY   = 100;
+    private static final int MSG_TAKE_PHOTO         = 101;
+    private static final int MSG_SEND_PHOTO_CHUNK   = 102;
+    private static final int MSG_HANDLE_PHOTO       = 103;
+    private static final int MSG_START_PHOTO_DATA   = 104;
+    private static final int MSG_STOP_PHOTO_DATA    = 105;
+    private static final int MSG_SEND_TEXT          = 106;
+    private static final int MSG_SEND_TEXT_ALERT    = 107;
+    private static final int MSG_ADD_PHONE_NUMBER   = 108;
 
     private MainActivity mContext;
-    private boolean mRunning;
-    private BluetoothSocket mSocket;
-    private InputStream mIn;
-    private OutputStream mOut;
+    private BluetoothServer mBtServer;
     private Handler mHandler;
     private Location mLocation;
     private Criteria mCriteria = new Criteria();
-    private IntentFilter mBatteryFilter = new IntentFilter(
-            Intent.ACTION_BATTERY_CHANGED);
+    private int mAccelSamples = 0;
+    private float[] mGravity = new float[3], mLinearAccel = new float[3], mAvgLinearAccel = new float[3];
+    private AccelState mAccelState = AccelState.LEVEL;
+    private long mAccelStateBegin = 0;
+    private IntentFilter mBatteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
     private TelephonyManager mTelephony;
     private int mRadioLevel;
-    private String mTelemetry;
-    private long mLastTelemetry = 0, mLastPhoto = 0, mLastPhotoData = 0;
-    private int mPhotoIndex = 0, mPhotoChunk = 0, mPhotoCount = 0, mChunkCount = 0;
+    private DroidTelemetry mTelemetry = new DroidTelemetry();
+    private PhotoData mPhotoData = new PhotoData();
+    private int mPhotoCount = 0;
     private boolean mSendingChunks = true;
-    private byte mPhotoChunkBuffer[] = new byte[PHOTO_CHUNK_SIZE];
+    private File mPhotoFile;
+    private StringBuilder[] mSmsMessages = new StringBuilder[SMS_MSG_COUNT];
+    private ArrayList<String> mPhoneNumbers = new ArrayList<String>();
 
-    public Pepper2Droid(MainActivity context) {
+    public Pepper2Droid(MainActivity context, BluetoothServer btServer) {
+        super((ThreadGroup) null, TAG);
         mContext = context;
-        mHandler = new Handler(Looper.getMainLooper(), this);
-        mContext.setPhotoHandler(mHandler, MSG_PHOTO_DATA);
+        mBtServer = btServer;
+
+        for (int i = 0; i < SMS_MSG_COUNT; i++) {
+            mSmsMessages[i] = new StringBuilder(MAX_SMS_MSG_LEN);
+        }
+        mAccelStateBegin = System.currentTimeMillis();
+
+        mPhoneNumbers.add(SMS_PHONE_NUMBER);
 
         mTelephony = (TelephonyManager) context
                 .getSystemService(Context.TELEPHONY_SERVICE);
@@ -76,116 +109,75 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
                 .getSystemService(Context.LOCATION_SERVICE);
         mLocation = locationManager
                 .getLastKnownLocation(LocationManager.GPS_PROVIDER);
-        mCriteria.setAccuracy(Criteria.NO_REQUIREMENT);
-        mCriteria.setAltitudeRequired(true);
-        mCriteria.setPowerRequirement(Criteria.POWER_MEDIUM);
-
-        locationManager.requestLocationUpdates(1000, 10, mCriteria, this,
-                Looper.getMainLooper());
-
-        Thread thread = new Thread(null, this, "PEPPER-2");
-        thread.start();
-    }
-
-    public void setBluetoothSocket(BluetoothSocket socket) {
-        if (mSocket != null) {
-            try {
-                mSocket.close();
-            } catch (IOException e) {
-            }
-        }
-
-        mSocket = socket;
-        try {
-            mIn = mSocket.getInputStream();
-            mOut = mSocket.getOutputStream();
-        } catch (IOException e) {
-            Log.e(TAG, "error getting streams", e);
-        }
+        mCriteria.setAccuracy(Criteria.ACCURACY_FINE);
     }
 
     public void shutdown() {
-        mRunning = false;
-        if (mSocket != null) {
-            try {
-                mSocket.close();
-            } catch (IOException e) {
-            }
-        }
+        mHandler.getLooper().quit();
 
-        LocationManager locationManager = (LocationManager) mContext
-                .getSystemService(Context.LOCATION_SERVICE);
+        LocationManager locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
         locationManager.removeUpdates(this);
+        SensorManager sensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
+        sensorManager.unregisterListener(this);
         mContext = null;
         mTelephony = null;
+    }
+
+    public void startPhotoData(int index) {
+        Message msg = mHandler.obtainMessage(MSG_START_PHOTO_DATA, index, 0);
+        msg.sendToTarget();
+    }
+
+    public void stopPhotoData() {
+        mHandler.sendEmptyMessage(MSG_STOP_PHOTO_DATA);
+    }
+
+    public void sendText() {
+        mHandler.sendEmptyMessage(MSG_SEND_TEXT);
+    }
+
+    public void addPhoneNumber(String phoneNumber) {
+        Message msg = mHandler.obtainMessage(MSG_ADD_PHONE_NUMBER, phoneNumber);
+        msg.sendToTarget();
     }
 
     private void updateTelemetry() {
         Intent batteryIntent = mContext.registerReceiver(null, mBatteryFilter);
         int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
         int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-
         updateRadioLevel();
 
-        StringBuilder builder = new StringBuilder(255);
-        String latitude = "0W";
-        String longitude = "0N";
-        String altitude = "0M";
-        if (mLocation != null) {
-            latitude = Location.convert(mLocation.getLatitude(),
-                    Location.FORMAT_DEGREES);
-            longitude = Location.convert(mLocation.getLongitude(),
-                    Location.FORMAT_DEGREES);
-            altitude = Double.toString(mLocation.getAltitude());
+        mTelemetry.battery = (short) Math.floor(100 * (level / (float) scale));
+        mTelemetry.radio = (short) mRadioLevel;
+        mTelemetry.photoCount = mPhotoCount;
+        mTelemetry.latitude = mLocation == null ? 0 : mLocation.getLatitude();
+        mTelemetry.longitude = mLocation == null ? 0 : mLocation.getLongitude();
+        mTelemetry.accelState = (short) mAccelState.ordinal();
+        mTelemetry.accelDuration = (int) ((System.currentTimeMillis() - mAccelStateBegin) / 1000);
+
+        for (int i = 0; i < mSmsMessages.length; i++) {
+            mSmsMessages[i].delete(0, mSmsMessages[i].length());
         }
 
-        builder.append(100 * (level / (float) scale)).append(',')
-                .append(mRadioLevel).append(',').append(mPhotoCount)
-                .append(',').append(mPhotoIndex).append(',')
-                .append(mPhotoChunk).append(',').append(latitude).append(',')
-                .append(longitude).append(',').append(altitude);
+        mSmsMessages[0].append("BATT: ")
+                       .append(mTelemetry.battery)
+                       .append("\nRADIO: ")
+                       .append(mTelemetry.radio)
+                       .append("\nPHOTOS: ")
+                       .append(mTelemetry.photoCount)
+                       .append("\n")
+                       .append(mAccelState.toString())
+                       .append(" for ")
+                       .append(mTelemetry.accelDuration)
+                       .append(" sec");
 
-        mTelemetry = builder.toString();
-        Log.d(TAG, mTelemetry);
+        mSmsMessages[1].append("LOCATION\n")
+                       .append(GMAPS_URL)
+                       .append(mTelemetry.latitude)
+                       .append(',')
+                       .append(mTelemetry.longitude);
 
-        if (mSocket != null && mSocket.isConnected()) {
-            Message msg = Message.obtain(mHandler, MSG_TELEMETRY, mTelemetry);
-            msg.sendToTarget();
-        }
-    }
-
-    private void maybeReadCommand() {
-        if (mSocket == null) {
-            return;
-        }
-
-        try {
-            if (mIn.available() < 6) {
-                return;
-            }
-
-            int length = mIn.read();
-            int commandType = mIn.read();
-            byte data[] = new byte[length];
-            ByteBuffer bb = ByteBuffer.wrap(data);
-            mIn.read(data, 0, 4);
-
-            int checksum = bb.getInt();
-            bb.rewind();
-            mIn.read(data);
-
-            switch (commandType) {
-            case CMD_START_PHOTO:
-                mSendingChunks = true;
-                mPhotoIndex = bb.get();
-                break;
-            case CMD_STOP_PHOTO:
-                mSendingChunks = false;
-                break;
-            }
-        } catch (IOException e) {
-            Log.e(TAG, "IO exception", e);
-        }
+        mBtServer.writeMessage(mTelemetry);
     }
 
     private void sendPhotoChunk() {
@@ -193,97 +185,155 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
             return;
         }
 
-        File f = new File(mContext.getExternalFilesDir(null),
-                DroidCamera.getRelativeThumbPath(mPhotoIndex));
-        if (!f.exists()) {
-            Log.e(TAG, "image file doesn't exist: " + f.getAbsolutePath());
-            return;
-        }
-
-        mChunkCount = (int) f.length() / PHOTO_CHUNK_SIZE;
-        if (f.length() % PHOTO_CHUNK_SIZE > 0) {
-            mChunkCount++;
-        }
-
-        try {
-            FileInputStream stream = new FileInputStream(f);
-            if (mPhotoChunk > 0) {
-                stream.skip(mPhotoChunk * PHOTO_CHUNK_SIZE);
-            }
-
-            int bytesRead = stream.read(mPhotoChunkBuffer);
-            stream.close();
-
-            if (bytesRead == -1) {
-                mPhotoChunk = 0;
+        if (mPhotoFile == null) {
+            mPhotoFile = new File(mContext.getExternalFilesDir(null),
+                                  DroidCamera.getRelativeThumbPath(mPhotoData.index));
+            if (!mPhotoFile.exists()) {
+                Log.e(TAG, "image file doesn't exist: " + mPhotoFile.getAbsolutePath());
+                mPhotoFile = null;
                 return;
             }
 
-            ByteArrayOutputStream a85Bytes = new ByteArrayOutputStream(255);
-            a85Bytes.write(mPhotoIndex);
-            a85Bytes.write(mPhotoChunk);
-            a85Bytes.write(mChunkCount);
-            a85Bytes.write(Base64.encode(mPhotoChunkBuffer, Base64.NO_WRAP));
-            //ASCII85OutputStream a85out = new ASCII85OutputStream(a85Bytes);
-            //a85out.write(mPhotoChunkBuffer);
+            mPhotoData.fileSize = mPhotoFile.length();
+            mPhotoData.chunk = 0;
+            mPhotoData.chunkCount = (int) mPhotoFile.length() / PHOTO_CHUNK_SIZE;
+            if (mPhotoFile.length() % PHOTO_CHUNK_SIZE > 0) {
+                mPhotoData.chunkCount++;
+            }
+        }
 
-            byte chunk[] = a85Bytes.toByteArray();
-
-            int checksum = 0;
-            for (int i = 0; i < chunk.length; i++) {
-                checksum ^= (chunk[i] & 0xFF);
+        try {
+            FileInputStream stream = new FileInputStream(mPhotoFile);
+            if (mPhotoData.chunk > 0) {
+                stream.skip(mPhotoData.chunk * PHOTO_CHUNK_SIZE);
             }
 
-            ByteBuffer bb = ByteBuffer.allocate(4);
-            bb.order(ByteOrder.BIG_ENDIAN);
-            mOut.write(chunk.length);
-            mOut.write(MSG_PHOTO_DATA);
-            mOut.write(bb.putInt(checksum).array());
-            mOut.write(chunk);
+            int bytesRead = stream.read(mPhotoData.chunkData);
+            stream.close();
+
+            if (bytesRead == -1) {
+                mPhotoData.chunk = 0;
+                mPhotoFile = null;
+                return;
+            }
+
+            mPhotoData.chunkDataLen = bytesRead;
+            mBtServer.writeMessage(mPhotoData);
 
             if (bytesRead != PHOTO_CHUNK_SIZE) {
-                mPhotoChunk = 0;
+                mPhotoData.chunk = 0;
             } else {
-                mPhotoChunk++;
+                mPhotoData.chunk++;
             }
         } catch (FileNotFoundException e) {
             Log.e(TAG, "file not found", e);
         } catch (IOException e) {
             // Log.e(TAG, "io exception", e);
-            mSocket = null;
+        }
+    }
+
+    private void sendTextMessage(boolean checkLevel) {
+        if (checkLevel) {
+            if (mAccelState != AccelState.LEVEL) {
+                return;
+            }
+
+            long accelDuration = System.currentTimeMillis() - mAccelStateBegin;
+            if (accelDuration < MIN_ACCEL_STABILITY) {
+                return;
+            }
+        }
+
+        SmsManager smsManager = SmsManager.getDefault();
+
+        for (StringBuilder b : mSmsMessages) {
+
+            String msg = b.toString();
+            if (DBG) {
+                Log.d(TAG, "SMS: " + msg.replaceAll("\n", "//"));
+            }
+
+            ArrayList<String> msgList = null;
+            if (msg.length() > MAX_SMS_MSG_LEN) {
+                msgList = smsManager.divideMessage(msg);
+            }
+    
+            for (String phoneNumber : mPhoneNumbers) {
+                PendingIntent piSent = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_SENT), 0);
+                PendingIntent piDelivered = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_DELIVERED), 0);
+                
+                if (msgList != null) {
+                    smsManager.sendMultipartTextMessage(phoneNumber, null, msgList, null, null);
+                } else {
+                    smsManager.sendTextMessage(phoneNumber, null, msg, piSent, piDelivered);
+                }
+            }
         }
     }
 
     @Override
     public void run() {
-        mRunning = true;
-        while (mRunning) {
-            boolean isConnected = mSocket != null && mSocket.isConnected();
-            if (isConnected) {
-                maybeReadCommand();
-            }
+        Looper.prepare();
+        mHandler = new MsgHandler();
+        mHandler.sendEmptyMessageDelayed(MSG_UPDATE_TELEMETRY, TELEMETRY_INTERVAL);
+        mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
+        mHandler.sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
+        mContext.setPhotoHandler(mHandler, MSG_HANDLE_PHOTO);
 
-            if (System.currentTimeMillis() - mLastTelemetry >= TELEMETRY_INTERVAL) {
+        if (mSendingChunks) {
+            startPhotoData(0);
+        }
+
+        LocationManager locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
+        locationManager.requestLocationUpdates(1000, 10, mCriteria, this, Looper.myLooper()); 
+
+        SensorManager sensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
+        Sensor sensor = sensorManager.getDefaultSensor(Sensor.TYPE_ACCELEROMETER);
+        sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_NORMAL);
+
+        Looper.loop();
+    }
+
+    private class MsgHandler extends Handler {
+        public void handleMessage(Message msg) {
+            switch (msg.what) {
+            case MSG_UPDATE_TELEMETRY:
                 updateTelemetry();
-                mLastTelemetry = System.currentTimeMillis();
-            }
-
-            if (System.currentTimeMillis() - mLastPhoto >= PHOTO_INTERVAL) {
+                sendEmptyMessageDelayed(MSG_UPDATE_TELEMETRY, TELEMETRY_INTERVAL);
+                break;
+            case MSG_TAKE_PHOTO:
                 mContext.takePhoto();
-                mLastPhoto = System.currentTimeMillis();
-            }
-
-            if (isConnected
-                    && mSendingChunks
-                    && System.currentTimeMillis() - mLastPhotoData >= PHOTO_CHUNK_INTERVAL) {
-                sendPhotoChunk();
-                mLastPhotoData = System.currentTimeMillis();
-            }
-
-            try {
-                Thread.sleep(250L);
-            } catch (InterruptedException e) {
-                Log.e(TAG, "interrupted", e);
+                mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
+                break;
+            case MSG_SEND_PHOTO_CHUNK:
+                if (mSendingChunks) {
+                    sendPhotoChunk();
+                    sendEmptyMessageDelayed(MSG_SEND_PHOTO_CHUNK, PHOTO_CHUNK_INTERVAL);
+                }
+                break;
+            case MSG_HANDLE_PHOTO:
+                mPhotoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
+                break;
+            case MSG_START_PHOTO_DATA:
+                mPhotoData.index = msg.arg1;
+                if (!mSendingChunks) {
+                    mSendingChunks = true;
+                    sendEmptyMessageDelayed(MSG_SEND_PHOTO_CHUNK, PHOTO_CHUNK_INTERVAL);
+                }
+                break;
+            case MSG_STOP_PHOTO_DATA:
+                mSendingChunks = false;
+                break;
+            case MSG_SEND_TEXT:
+                sendTextMessage(false);
+                break;
+            case MSG_SEND_TEXT_ALERT:
+                sendTextMessage(true);
+                sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
+                break;
+            case MSG_ADD_PHONE_NUMBER:
+                mPhoneNumbers.add((String) msg.obj);
+                break;
             }
         }
     }
@@ -392,42 +442,55 @@ public class Pepper2Droid implements Runnable, LocationListener, Handler.Callbac
         return provider1.equals(provider2);
     }
 
-    private ByteBuffer byteBuffer;
+    @Override
+    public void onAccuracyChanged(Sensor sensor, int accuracy) { }
 
-    private void sendTelemetry(String telemetry) throws IOException {
-        if (byteBuffer == null) {
-            byteBuffer = ByteBuffer.allocate(4);
-            byteBuffer.order(ByteOrder.BIG_ENDIAN);
+    @Override
+    public void onSensorChanged(SensorEvent event) {
+        if (event.sensor.getType() != Sensor.TYPE_ACCELEROMETER) {
+            return;
         }
 
-        int checksum = 0;
-        int len = telemetry.length();
+        final float alpha = 0.8f;
 
-        for (int i = 0; i < len; i++) {
-            checksum ^= (telemetry.charAt(i) & 0xFF);
+        mGravity[0] = alpha * mGravity[0] + (1 - alpha) * event.values[0];
+        mGravity[1] = alpha * mGravity[1] + (1 - alpha) * event.values[1];
+        mGravity[2] = alpha * mGravity[2] + (1 - alpha) * event.values[2];
+
+        mLinearAccel[0] = event.values[0] - mGravity[0];
+        mLinearAccel[1] = event.values[1] - mGravity[1];
+        mLinearAccel[2] = event.values[2] - mGravity[2];
+
+        if (mAccelSamples == 0) {
+            mAvgLinearAccel[0] = mLinearAccel[0];
+            mAvgLinearAccel[1] = mLinearAccel[1];
+            mAvgLinearAccel[2] = mLinearAccel[2];
+        } else {
+            mAvgLinearAccel[0] = (mAvgLinearAccel[0] + mLinearAccel[0]) / 2.0f;
+            mAvgLinearAccel[1] = (mAvgLinearAccel[1] + mLinearAccel[1]) / 2.0f;
+            mAvgLinearAccel[2] = (mAvgLinearAccel[2] + mLinearAccel[2]) / 2.0f;
         }
 
-        byteBuffer.clear();
-
-        mOut.write(len);
-        mOut.write(MSG_TELEMETRY);
-        mOut.write(byteBuffer.putInt(checksum).array());
-        mOut.write(telemetry.getBytes());
-    }
-
-    public boolean handleMessage(Message msg) {
-        switch (msg.what) {
-        case MSG_TELEMETRY:
-            try {
-                sendTelemetry((String) msg.obj);
-            } catch (IOException e) {
-                return false;
+        mAccelSamples++;
+        if (mAccelSamples == ACCEL_SAMPLE_SIZE) {
+            AccelState newState;
+            if (mAvgLinearAccel[1] <= ACCEL_FALLING) {
+                newState = AccelState.FALLING;
+            } else if (mAvgLinearAccel[1] >= ACCEL_RISING) {
+                newState = AccelState.RISING;
+            } else {
+                newState = AccelState.LEVEL;
             }
-            return true;
-        case MSG_PHOTO_DATA:
-            mPhotoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
-            return true;
+
+            if (newState != mAccelState) {
+                mAccelStateBegin = System.currentTimeMillis();
+                mAccelState = newState;
+            }
+
+            if (DBG) {
+                Log.d(TAG, String.format("accel = %s for %d seconds", mAccelState, ((System.currentTimeMillis() - mAccelStateBegin) / 1000)));
+            }
+            mAccelSamples = 0;
         }
-        return false;
     }
 }
