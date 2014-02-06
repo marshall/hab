@@ -3,6 +3,7 @@ package com.arcaner.pepper2;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
 import java.util.UUID;
 
 import android.bluetooth.BluetoothAdapter;
@@ -82,7 +83,14 @@ public class BluetoothServer implements Runnable {
             return;
         }
 
-        Message msg = mConnection.getHandler().obtainMessage(BluetoothConnection.MSG_WRITE_MSG, message);
+        byte[] copy = new byte[message.getBufferLen()];
+        ByteBuffer buf = message.getBuffer();
+        buf.mark();
+        buf.position(0);
+        buf.get(copy);
+        buf.reset();
+
+        Message msg = mConnection.getHandler().obtainMessage(BluetoothConnection.MSG_WRITE_MSG, copy);
         msg.sendToTarget();
     }
 
@@ -178,7 +186,7 @@ public class BluetoothServer implements Runnable {
                             sendEmptyMessageDelayed(MSG_MAYBE_READ_MSG, MSG_READ_INTERVAL);
                             break;
                         case MSG_WRITE_MSG:
-                            writeMessage((ProtoMessage) msg.obj);
+                            writeMessage((byte[]) msg.obj);
                             break;
                     }
                 }
@@ -230,10 +238,10 @@ public class BluetoothServer implements Runnable {
             }
         }
 
-        public void writeMessage(ProtoMessage message)
+        public void writeMessage(byte[] message)
         {
             try {
-                message.writeTo(mOut);
+                mOut.write(message);
             } catch (IOException e) {}
         }
     }

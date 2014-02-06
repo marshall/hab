@@ -44,9 +44,10 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
 
     private static final int TWO_MINUTES = 1000 * 60 * 2;
     private static final int TELEMETRY_INTERVAL = 5 * 1000;
-    private static final int PHOTO_INTERVAL = 1000 * 60 * 5;
+    private static final int PHOTO_INTERVAL = 1000 * 30;
     private static final int PHOTO_CHUNK_INTERVAL = 1000;
     private static final int PHOTO_CHUNK_SIZE = ProtoMessage.MAX_DATA_LEN;
+    private static final int MAX_PHOTOS = 255;
     private static final int SMS_ALERT_INTERVAL = 1000 * 15; // TODO make this like 10 minutes
     private static final int MIN_ACCEL_STABILITY = 1000 * 10;
     private static final int ACCEL_SAMPLE_SIZE = 20;
@@ -85,7 +86,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private DroidTelemetry mTelemetry = new DroidTelemetry();
     private PhotoData mPhotoData = new PhotoData();
     private int mPhotoCount = 0;
-    private boolean mSendingChunks = true;
+    private boolean mSendingChunks = false;
     private File mPhotoFile;
     private StringBuilder[] mSmsMessages = new StringBuilder[SMS_MSG_COUNT];
     private ArrayList<String> mPhoneNumbers = new ArrayList<String>();
@@ -208,7 +209,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 stream.skip(mPhotoData.chunk * PHOTO_CHUNK_SIZE);
             }
 
-            int bytesRead = stream.read(mPhotoData.chunkData);
+            int bytesRead = stream.read(mPhotoData.chunkData, 0, ProtoMessage.MAX_DATA_LEN);
             stream.close();
 
             if (bytesRead == -1) {
@@ -280,10 +281,6 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         mHandler.sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
         mContext.setPhotoHandler(mHandler, MSG_HANDLE_PHOTO);
 
-        if (mSendingChunks) {
-            startPhotoData(0);
-        }
-
         LocationManager locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
         locationManager.requestLocationUpdates(1000, 10, mCriteria, this, Looper.myLooper()); 
 
@@ -303,7 +300,6 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 break;
             case MSG_TAKE_PHOTO:
                 mContext.takePhoto();
-                mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
                 break;
             case MSG_SEND_PHOTO_CHUNK:
                 if (mSendingChunks) {
@@ -313,6 +309,13 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 break;
             case MSG_HANDLE_PHOTO:
                 mPhotoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
+                if (mPhotoCount < MAX_PHOTOS) {
+                    mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
+                }
+
+                if (!mSendingChunks) {
+                    startPhotoData(0);
+                }
                 break;
             case MSG_START_PHOTO_DATA:
                 mPhotoData.index = msg.arg1;
