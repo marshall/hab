@@ -47,7 +47,7 @@ class MsgReaderTest(unittest.TestCase):
 
 class LocationMsgTest(unittest.TestCase):
     def setUp(self):
-        self.location_data = proto.LocationMsg.data_struct.pack(1.1, 2.2, 3.3, 100)
+        self.location_data = proto.LocationMsg.data_struct.pack(1.1, 2.2, 3.3, 100, 5, 2)
         self.data = proto.Msg.marker_struct.pack(proto.Msg.begin) + \
                proto.Msg.header_struct.pack(proto.LocationMsg.TYPE,
                                             proto.LocationMsg.data_struct.size,
@@ -63,11 +63,14 @@ class LocationMsgTest(unittest.TestCase):
         self.assertAlmostEqual(msg.longitude, 2.2)
         self.assertAlmostEqual(msg.altitude, 3.3)
         self.assertEqual(msg.quality, 100)
+        self.assertEqual(msg.satellites, 5)
+        self.assertEqual(msg.speed, 2)
         self.assertSequenceEqual(msg.as_buffer(), self.data)
 
     def test_build(self):
         location_msg = proto.LocationMsg.from_data(latitude=1.1, longitude=2.2,
-                                                   altitude=3.3, quality=100)
+                                                   altitude=3.3, quality=100,
+                                                   satellites=5, speed=2)
         self.assertSequenceEqual(location_msg.as_buffer(), self.data)
 
 class SendTextMsgTest(unittest.TestCase):

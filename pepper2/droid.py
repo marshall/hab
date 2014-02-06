@@ -68,14 +68,14 @@ class DroidBluetooth(gevent.Greenlet):
         lost_connection = False
         try:
             gevent.socket.wait_read(self.socket.fileno())
-            msg = self.reader.read(self.socket_file)
+            msg = proto.MsgReader().read(self.socket_file)
             if not msg:
                 lost_connection = True
         except (IOError, socket.timeout, socket.error) as e:
             lost_connection = True
         except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
             # these are "ok" -- logged upstream
-            pass
+            return
 
         if lost_connection:
             log.warn('Bluetooth connection lost, will attempt to reconnect')

@@ -1,4 +1,5 @@
 import logging
+import socket
 
 import Adafruit_BBIO.UART as UART
 import gevent
@@ -40,7 +41,7 @@ class Radio(object):
 
     def next_msg(self, f):
         try:
-            msg = self.reader.read(f)
+            msg = proto.MsgReader().read(f)
             if msg:
                 self.handle_msg(msg)
         except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
@@ -72,7 +73,11 @@ class TCPRadio(Radio):
     def write(self, str):
         if not self.socket:
             return
-        self.socket.send(str)
+
+        try:
+            self.socket.send(str)
+        except socket.error, e:
+            self.socket = None
 
     def connection(self, socket, addr):
         self.socket = socket

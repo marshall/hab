@@ -118,8 +118,6 @@ class Msg(object):
         return '%s[%d](%s)' % (self.__class__.__name__,
                                self._buffer_len,
                                self.data_attr_str())
-        #' '.join(['%x' % c for c in self._buffer[:self._buffer_len]]))
-        #return '%s{%s}' % (self.__class__.__name__, self.data_attr_str())
 
     def data_attr_str(self):
         if not self.data_attrs:
@@ -130,6 +128,9 @@ class Msg(object):
             attr_strs.append('%s=%s' % (name, repr(getattr(self, name))))
 
         return ', '.join(attr_strs)
+
+    def data_str(self):
+        return ' '.join(['%x' % ord(c) for c in self._buffer[:self._buffer_len]])
 
     def pack_data(self, msg_data):
         msg_data = msg_data or ''
@@ -314,6 +315,11 @@ class MsgReader(object):
         try:
             self.msg = Msg.from_header_buffer(self.buffer)
             self.state = self.state_data
+
+            if self.log.isEnabledFor(logging.DEBUG):
+                self.log.debug('HEADER: %s[%d] = %s', self.msg.__class__.__name__,
+                                                      self.msg.msg_len,
+                                                      ' '.join(('%x' % c for c in self.buffer[:Msg.header_end])))
         except BadMarker, e:
             self.log.warn('Bad start marker, discarding %d out of sync bytes', self.index)
             self.index = 0

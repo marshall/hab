@@ -1,3 +1,5 @@
+import calendar
+from datetime import datetime, timedelta
 import json
 import logging
 import os
@@ -9,13 +11,11 @@ import gevent
 import pynmea
 
 import droid
-#import gps
 import proto
 from proto import TelemetryMsg, LocationMsg
 import radio
 import screen
 import sensors
-#import temp_sensor
 
 this_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -63,13 +63,11 @@ class OBC(object):
         self.timers = []
         self.mode = self.mode_preflight
         self.log = logging.getLogger('obc')
-        self.sys = System()
-        #self.gps = gps.GPS()
+        self.sys = System(self)
         self.radio = radio_type(self)
         self.screen = screen.Screen(self)
         self.sensors = sensors.Sensors()
         self.droid = droid.Droid(self)
-        #self.temp = temp_sensor.TempSensor()
         self.running = False
 
         self.start_timers((self.sensor_interval, self.sensor_update),
@@ -187,7 +185,10 @@ class OBC(object):
             self.timers.append(obc_timer)
 
 class System(object):
-    def __init__(self):
+    def __init__(self, obc):
+        self.time_set = False
+        self.obc = obc
+        self.log = logging.getLogger('sys')
         self.helper = os.path.join(this_dir, 'sys_helper.sh')
         for key, val in dict(uptime=0, total_procs=0, cpu_usage=0,
                 total_mem=0, free_mem=0).iteritems():
@@ -205,9 +206,33 @@ class System(object):
         except subprocess.CalledProcessError, e:
             pass
 
-    def set_hwclock(self, date_str):
+    def maybe_update_time(self):
+        if self.time_set:
+            return
+
+        if not self.obc.sensors.is_gps_time_valid():
+            return
+
+        gps_time = self.obc.sensors.gps_time
+        self.time_set = self.set_time(gps_time.strftime('%Y-%m-%d'),
+                                      gps_time.strftime('%H:%M:%S'))
+
+        if not self.time_set:
+            self.log.warning('Unable to set system time, will try again')
+            return
+
+        # we also need to reset the OBC uptime here..
+        new_begin = gps_time + timedelta(hours=self.obc.uptime_hr,
+                                         minutes=self.obc.uptime_min,
+                                         seconds=self.obc.uptime_sec)
+
+        self.obc.begin = calendar.timegm(new_begin.utctimetuple())
+
+    def set_time(self, date_str, time_str):
+        self.log.info('Updating system time: "%s" "%s"', date_str, time_str)
+
         try:
-            subprocess.check_output([self.helper, date_str])
+            subprocess.check_output([self.helper, 'set_time', date_str, time_str])
             return True
         except subprocess.CalledProcessError, e:
             return False
@@ -218,3 +243,4 @@ class System(object):
 
     def update(self):
         self.update_stats()
+        self.maybe_update_time()

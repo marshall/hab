@@ -5,10 +5,13 @@
 
 this_dir=$(cd "`dirname "$0"`"; pwd)
 
-set_hwclock() {
-    new_time=$1
-    /sbin/hwclock --set "--date=$new_time"
-    /sbin/hwclock --hctosys
+set_time() {
+    new_date=$1
+    new_time=$2
+
+    date "+%Y-%m-%d %T" --utc --set="$new_date $new_time"
+    /sbin/hwclock --systohc
+    /sbin/hwclock --utc
 }
 
 get_stats() {
@@ -19,7 +22,7 @@ usage() {
     echo "Usage: $0 <command> [args]"
     echo "Commands"
     echo "    get_stats"
-    echo "    set_hwclock <date-time>"
+    echo "    set_time <YYYY-MM-DD> <HH:mm:ss>"
     exit 1
 }
 
@@ -32,13 +35,16 @@ case "$1" in
         get_stats
         ;;
 
-    set_hwclock)
+    set_time)
         if [[ "$2" = "" ]]; then
             echo "No date specified"
             usage
+        elif [[ "$3" = "" ]]; then
+            echo "No time specified"
+            usage
         fi
 
-        set_hwclock "$2"
+        set_time "$2" "$3"
         ;;
 
     *) echo "Unrecognized command: $1"
