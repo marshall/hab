@@ -6,6 +6,7 @@
     <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
     <link href="css/bootstrap-theme.min.css" rel="stylesheet" media="screen">
     <link href="css/ground_station.css" rel="stylesheet" media="screen">
+    <script src="https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false"></script>
   </head>
 
   <body>
@@ -92,20 +93,22 @@
             <tr class="success">
               <th class="col-md-2">BATTERY</th>
               <th class="col-md-2">RADIO</th>
+              <th class="col-md-2">ACC</th>
+              <th class="col-md-2">ACC DUR</th>
               <th class="col-md-2">PHOTOS</th>
               <th class="col-md-2">LATITUDE</th>
               <th class="col-md-2">LONGITUDE</th>
-              <th class="col-md-2">ALTITUDE</th>
             </tr>
           </thead>
           <tbody>
           <tr>
             <td id="droid_battery" class="data col-md-2"></td>
             <td id="droid_radio" class="data col-md-2"></td>
+            <td id="droid_accel_state" class="data col-md-2"></td>
+            <td id="droid_accel_duration" class="data col-md-2"></td>
             <td id="droid_photo_count" class="data col-md-2"></td>
             <td id="droid_latitude" class="data col-md-2"></td>
             <td id="droid_longitude" class="data col-md-2"></td>
-            <td id="droid_altitude" class="data col-md-2"></td>
           </tr>
           </tbody>
         </table>
@@ -126,32 +129,15 @@
             </tr>
           </thead>
           <tbody id="photo_download_tbody">
-            <td></td>
-            <td></td>
-            <td>
-              <span class="progress-label" id="droid_photo_progress_label"></span>
-              <div id="droid_photo_progress" class="progress progress-striped">
-                <div id="droid_photo_progress_bar" class="progress-bar" style="width: 35%">
-                </div>
-              </div>
-              <div id="droid_chunk_progress" class="progress">
-              </div>
-            </td>
           </tbody>
         </table>
       </div>
-    </div>
 
-        <!--div class="panel panel-half panel-default" id="photo_progress_panel">
-          <div class="panel-heading">
-            <h3 id="droid_photo_title" class="panel-title">PHOTO</h3>
-          </div>
-          <div class="panel-body">
-            
-          </div>
-        </div>
+      <div class="col-md-8" id="map">
+        &nbsp;
       </div>
-    </div-->
+
+    </div>
 
     <div class="footer">
     </div>

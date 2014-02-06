@@ -1,5 +1,5 @@
 var flightModes = ['preflight', 'ascent', 'descent', 'landed'];
-
+var accelStates = ['level', 'rising', 'falling'];
 function MockData() {
     this.uptime = 0;
     this.downloading = false;
@@ -28,10 +28,11 @@ MockData.prototype = {
         if (droidConnected) {
             this.droid.battery = this.randInt(0, 100);
             this.droid.radio = this.randInt(0, 100);
+            this.droid.accel_state = accelStates[this.randInt(0, accelStates.length - 1)];
+            this.droid.accel_duration = this.randInt(0, 7200);
             this.droid.photo_count = this.randInt(0, 255);
             this.droid.latitude = this.randFloat(-90, 90);
             this.droid.longitude = this.randFloat(-180, 180);
-            this.droid.altitude = this.randFloat(0, 50);
         }
 
         var haveLocation = !!this.randInt(0, 1);
@@ -79,23 +80,49 @@ MockData.prototype = {
     },
 };
 
-var latLongFmt = '%0.6f'
+var map = null;
+
+function initMap() {
+  var mapOptions = {
+    zoom: 15,
+    center: new google.maps.LatLng(-34.397, 150.644)
+  };
+
+  map = new google.maps.Map(document.getElementById('map'), mapOptions);
+}
+
 $(document).ready(function($) {
+    var script = document.createElement('script');
+    script.type = 'text/javascript';
+    script.src = 'https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false&callback=initMap';
+    document.body.appendChild(script);
+
     function DOMMapper() {
         this.elements = {};
+        this.marker = null;
     }
 
+    function durationMapper(id) {
+        return function(duration) {
+            var hours = Math.floor(duration / 3600);
+            var minutes = Math.floor(duration / 60) - (hours * 60);
+            var seconds = duration - (hours * 3600) - (minutes * 60);
+            this.element(id).text(
+                    sprintf('%02d:%02d:%02d', hours, minutes, seconds));
+        }
+    }
+
+    var latLongFmt = '%0.6f'
     DOMMapper.prototype = {
         formatters: {
             cpu_usage: '%0.1f%%',
             free_mem: '%d MB',
-            temperature: '%0.1fF',
+            humidity: '%0d%%',
             location_latitude: latLongFmt,
             location_longitude: latLongFmt,
             location_altitude: '%0.1f',
             droid_latitude: latLongFmt,
-            droid_longitude: latLongFmt,
-            droid_altitude: '%0.1f',
+            droid_longitude: latLongFmt
         },
 
         mappers: {
@@ -106,37 +133,54 @@ $(document).ready(function($) {
                 this.togglePanelSuccessError('system_', !!data.uptime);
             },
 
-            uptime: function(uptime) {
-                var hours = Math.floor(uptime / 3600);
-                var minutes = Math.floor(uptime / 60) - (hours * 60);
-                var seconds = uptime - (minutes * 60);
-                this.element('uptime').text(
-                    sprintf('%02d:%02d:%02d', hours, minutes, seconds));
-            },
+            uptime: durationMapper('uptime'),
 
             mode: function(mode) {
                 this.element('mode').text(sprintf('%8s', mode.toUpperCase()));
             },
 
+            temperature: function(temp) {
+                this.element('temperature').text(sprintf('%0.1fF', 1.8 * temp + 32));
+            },
+
             location: function(location) {
                 this.mapData(location, 'location_');
+
+                var latlng = new google.maps.LatLng(location.latitude, location.longitude);
+                map.panTo(latlng);
+                if (!this.marker) {
+                    this.marker = new google.maps.Marker({
+                        position: latlng,
+                        map: map,
+                        title: 'PEPPER-2',
+                        icon: 'img/hab-icon.png'
+                    });
+                } else {
+                    this.marker.setPosition(latlng);
+                }
             },
 
             droid: function(droid) {
                 this.mapData(droid, 'droid_');
             },
 
-           photo_status: function(photo_status) {
+            droid_accel_state: function(accel_state) {
+                this.element('droid_accel_state').text(sprintf('%8s', accel_state.toUpperCase()));
+            },
+
+            droid_accel_duration: durationMapper('droid_accel_duration'),
+
+            photo_status: function(photo_status) {
                 function buildProgress(status) {
                     var completed = status.chunks - status.missing.length;
                     var completedPct = 100 * (completed / status.chunks);
 
                     var column = $('<td>');
                     column.append($('<span class="progress-label">')
-                                  .text(completed + '/' + status.chunks))
-                          .append($('<div class="progress progress-striped">')
-                                  .append($('<div class="progress-bar">')
-                                          .css('width', completedPct + '%')));
+                            .text(completed + '/' + status.chunks))
+                        .append($('<div class="progress progress-striped">')
+                                .append($('<div class="progress-bar">')
+                                    .css('width', completedPct + '%')));
 
                     var chunkProgress = $('<div class="progress">');
                     var chunkPct = 100 / status.chunks;
@@ -231,5 +275,5 @@ $(document).ready(function($) {
         handleData(mockData);
     }
 
-    setInterval(updateMockData, 1000);
+    setInterval(updateData, 1000);
 });

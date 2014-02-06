@@ -40,3 +40,7 @@ th, .data-label {
 #droid_photo_progress, #droid_chunk_progress {
     display: none;
 }
+
+#map {
+    height: 30em;
+}
