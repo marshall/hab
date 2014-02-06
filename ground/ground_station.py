@@ -61,6 +61,9 @@ class GSWebapp(object):
         cherrypy.response.headers['Content-Type'] = 'application/json'
 
         data = dict()
+        if self.gs.mock:
+            data.update(mock=True)
+
         if self.gs.telemetry:
             t = self.gs.telemetry
             self.log.info('telemetry data: %s', t.data_str())
@@ -154,6 +157,11 @@ class GroundStation(object):
     def __init__(self, port):
         self.log = logging.getLogger('ground_station')
         self.reader = proto.MsgReader()
+        self.mock = False
+        self.location = None
+        self.telemetry = None
+        self.droid_telemetry = None
+        self.photo_status = []
 
         if port == 'mock':
             gevent.spawn(self.mock_main_loop)
@@ -165,10 +173,7 @@ class GroundStation(object):
             self.stream = self.socket.makefile()
         else:
             self.stream = serial.Serial(port=port, baudrate=115200, timeout=1)
-        self.location = None
-        self.telemetry = None
-        self.droid_telemetry = None
-        self.photo_status = []
+
         gevent.spawn(self.main_loop)
 
     def get_photo_status(self, photo):
@@ -211,6 +216,7 @@ class GroundStation(object):
             pass
 
     def mock_main_loop(self):
+        self.mock = True
         while True:
             gevent.sleep(1)
 
