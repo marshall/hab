@@ -16,10 +16,14 @@ class Radio(object):
     baud = 9600
 
     def __init__(self, obc):
-        self.logger = logging.getLogger('radio')
+        self.log = logging.getLogger('radio')
         self.obc = obc
         self.setup_radio()
         self.running = False
+        self.connected = False
+        self.address = '?'
+        self.version_info = '?'
+        self.power_level = 0
         gevent.spawn(self.radio_loop)
 
     def shutdown(self):
@@ -31,8 +35,57 @@ class Radio(object):
                                     baudrate=self.baud,
                                     timeout=1)
 
+        result = self.send_AT('+++')
+        if len(result) > 0 and result[0] == 'OK':
+            self.connected = True
+
+        result = self.send_AT('ATMY\r')
+        if len(result) > 0:
+            self.address = result[0]
+
+        result = self.send_AT('ATVL\r')
+        if len(result) > 0:
+            result.remove('OK')
+            self.version_info = '/'.join(result)
+
+        result = self.send_AT('ATPL\r')
+        if len(result) > 0:
+            self.power_level = int(result[0])
+
+        self.send_AT('ATCN\r')
+        self.log.info('connected=%s, address=%s, version_info=%s, power_level=%d',
+                      self.connected, self.address, self.version_info, self.power_level)
+
+    def read_AT_line(self):
+        response = []
+        while True:
+            c = self.serial.read(1)
+            if c is None or c[0] == '\r':
+                break
+            response.append(c[0])
+
+        if len(response) > 0:
+            return ''.join(response)
+
+        return None
+
+    def send_AT(self, cmd):
+        self.serial.write(cmd)
+        responses = []
+        response = []
+        try:
+            gevent.socket.wait_read(self.serial.fileno(), timeout=5)
+            while self.serial.inWaiting() > 0:
+                response = self.read_AT_line()
+                if response:
+                    responses.append(response)
+        except socket.timeout, e:
+            pass
+
+        return responses
+
     def write_line(self, str):
-        self.logger.info(str)
+        self.log.info(str)
         self.write(str + '\r\n')
 
     def write(self, str):

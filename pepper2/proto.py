@@ -219,9 +219,10 @@ class TelemetryMsg(Msg):
     mode_descent    = 2
     mode_landed     = 3
 
-    data_struct = struct.Struct('!LBBHff')
+    data_struct = struct.Struct('!LBBHfff')
     data_attrs  = (('uptime', 0), ('mode', 0), ('cpu_usage', 0),
-                   ('free_mem', 0), ('temperature', 0), ('humidity', 0))
+                   ('free_mem', 0), ('int_temperature', 0), ('int_humidity', 0),
+                   ('ext_temperature', 0))
 
 @msg_type(2)
 class DroidTelemetryMsg(Msg):

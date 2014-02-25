@@ -11,11 +11,12 @@ import gevent
 import pynmea
 
 import droid
+import gps
 import proto
 from proto import TelemetryMsg, LocationMsg
 import radio
 import screen
-import sensors
+import temperature
 
 this_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -66,8 +67,10 @@ class OBC(object):
         self.sys = System(self)
         self.radio = radio_type(self)
         self.screen = screen.Screen(self)
-        self.sensors = sensors.Sensors()
         self.droid = droid.Droid(self)
+        self.gps = gps.GPS()
+        self.dht22 = temperature.DHT22()
+        self.ds18b20 = temperature.DS18B20()
         self.running = False
 
         self.start_timers((self.sensor_interval, self.sensor_update),
@@ -83,7 +86,7 @@ class OBC(object):
 
         self.droid.shutdown()
         self.radio.shutdown()
-        self.sensors.shutdown()
+        #self.sensors.shutdown()
 
     def __del__(self):
         self.shutdown()
@@ -107,6 +110,7 @@ class OBC(object):
         self.sys.update()
 
     def sensor_update(self):
+        #dht22.update(self.dht22_pin)
         #self.gps.update()
         #self.temp.update()
         #self.maybe_update_mode()
@@ -166,16 +170,17 @@ class OBC(object):
                           mode=self.mode,
                           cpu_usage=int(self.sys.cpu_usage),
                           free_mem=int(self.sys.free_mem/1024),
-                          temperature=int(self.sensors.internal_temp),
-                          humidity=int(self.sensors.internal_humidity))
+                          int_temperature=round(self.dht22.temp, 2),
+                          int_humidity=round(self.dht22.humidity, 2),
+                          ext_temperature=round(self.ds18b20.temp, 2))
 
         self.send_message(LocationMsg,
-                          latitude=self.sensors.gps_latitude,
-                          longitude=self.sensors.gps_longitude,
-                          altitude=self.sensors.gps_altitude,
-                          quality=self.sensors.gps_quality,
-                          satellites=self.sensors.gps_satellites,
-                          speed=self.sensors.gps_speed)
+                          latitude=self.gps.latitude,
+                          longitude=self.gps.longitude,
+                          altitude=self.gps.altitude,
+                          quality=self.gps.quality,
+                          satellites=self.gps.satellites,
+                          speed=self.gps.speed)
 
     def start_timers(self, *timers):
         obc_timers = []
@@ -243,4 +248,4 @@ class System(object):
 
     def update(self):
         self.update_stats()
-        self.maybe_update_time()
+        #self.maybe_update_time()

@@ -66,10 +66,12 @@ class Screen(object):
     def build_template_args(self):
         return dict(obc=self.obc,
                     sys=self.obc.sys,
-                    sensors=self.obc.sensors,
-                    #gps=self.obc.gps,
+                    #sensors=self.obc.sensors,
+                    gps=self.obc.gps,
                     droid=self.obc.droid,
-                    #temp=self.obc.temp,
+                    int_temp=self.obc.dht22.fahrenheit(),
+                    int_humidity=self.obc.dht22.humidity,
+                    ext_temp=self.obc.ds18b20.fahrenheit(),
                     now=datetime.datetime.now())
 
     def update(self):
@@ -142,16 +144,16 @@ class Panel(object):
 
 class MainPanel(Panel):
     header = '{now:%m/%d %H:%M} {obc.uptime_hr:02d}h{obc.uptime_min:02d}m{obc.uptime_sec:02d}s'
-    lines = ('AND:{droid.connected:d} RDO:F GPS:{sensors.gps_quality}',
-             'TMP:{sensors.internal_fahrenheit:+02.2f}F LAT:{sensors.gps_latitude:+02.1f}',
-             'LNG:{sensors.gps_longitude:+02.1f} ALT:{sensors.gps_altitude:+02.1f}K')
+    lines = ('AND:{droid.connected:d} RDO:F GPS:{gps.quality}',
+             'TMP:{int_temp:+02.2f}F LAT:{gps.latitude:+02.1f}',
+             'LNG:{gps.longitude:+02.1f} ALT:{gps.altitude:+02.1f}K')
 
     def draw(self):
         self.draw_lines([self.header], invert=True)
         self.draw_lines(self.lines)
 
 class SysPanel(Panel):
-    lines = ('{sensors.internal_fahrenheit:+0.0f}F {sensors.internal_humidity:0.0f}%',
+    lines = ('{int_temp:+0.0f}F {int_humidity:0.0f}%',
              'CPU {sys.cpu_usage:02.1f}%',
              'MEM {sys.free_mem_mb:0.0f}MB free',
              'UP  {obc.uptime_hr:02d}h {obc.uptime_min:02d}m {obc.uptime_sec:02d}s')
@@ -162,14 +164,14 @@ class SysPanel(Panel):
         self.draw_lines(self.lines)
 
 class GPSPanel(Panel):
-    lines = ('LAT  {sensors.gps_latitude:+02.5f}',
-             'LNG  {sensors.gps_longitude:+02.5f}',
-             'ALT  {sensors.gps_altitude:02.3f}K',
-             'SPD  {sensors.gps_speed:0.1f}')
+    lines = ('LAT  {gps.latitude:+02.5f}',
+             'LNG  {gps.longitude:+02.5f}',
+             'ALT  {gps.altitude:02.3f}K',
+             'SPD  {gps.speed:0.1f}')
 
     def draw(self):
         self.draw_title('GPS')
-        self.draw_mini_stat('C{sensors.gps_satellites} Q{sensors.gps_quality}')
+        self.draw_mini_stat('C{gps.satellites} Q{gps.quality}')
         self.draw_lines(self.lines)
 
 class DroidPanel(Panel):
