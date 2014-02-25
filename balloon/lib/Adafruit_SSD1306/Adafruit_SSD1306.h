@@ -28,7 +28,7 @@ All text above, and the splash screen must be included in any redistribution
 #define PortReg volatile RwReg
 #define PortMask uint32_t
 #else
-#define PortReg volatile unit8_t
+#define PortReg volatile uint8_t
 #define PortMask uint8_t
 #endif
 
