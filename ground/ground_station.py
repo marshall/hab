@@ -66,7 +66,6 @@ class GSWebapp(object):
 
         if self.gs.telemetry:
             t = self.gs.telemetry
-            self.log.info('telemetry data: %s', t.data_str())
             data.update(uptime=t.uptime,
                         mode=t.modes[t.mode],
                         cpu_usage=t.cpu_usage,

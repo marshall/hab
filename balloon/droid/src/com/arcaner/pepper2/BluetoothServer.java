@@ -210,10 +210,8 @@ public class BluetoothServer implements Runnable {
                 return;
             }
 
-            Log.d(TAG, "read from mIn");
             ProtoMessage message = mReader.read(mIn);
             if (message == null) {
-                Log.d(TAG, "NULL message, trying again later");
                 return;
             }
 

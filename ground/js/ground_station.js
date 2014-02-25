@@ -36,12 +36,14 @@ DOMMapper.prototype = {
         droid_longitude: latLongFmt
     },
 
+
     mappers: {
         root: function(data) {
             var droidConnected = data.droid && data.droid.connected;
             this.togglePanelSuccessError('droid_', droidConnected);
             this.togglePanelSuccessError('location_', !!data.location);
             this.togglePanelSuccessError('system_', !!data.uptime);
+            this.markLocation(data);
         },
 
         uptime: durationMapper('uptime'),
@@ -56,23 +58,12 @@ DOMMapper.prototype = {
 
         location: function(location) {
             this.mapData(location, 'location_');
-
-            var latlng = new google.maps.LatLng(location.latitude, location.longitude);
-            map.panTo(latlng);
-            if (!this.marker) {
-                this.marker = new google.maps.Marker({
-                    position: latlng,
-                    map: map,
-                    title: 'PEPPER-2',
-                    icon: 'img/hab-icon.png'
-                });
-            } else {
-                this.marker.setPosition(latlng);
-            }
         },
 
         droid: function(droid) {
             this.mapData(droid, 'droid_');
+            if (this.marker) {
+            }
         },
 
         droid_accel_state: function(accel_state) {
@@ -137,6 +128,43 @@ DOMMapper.prototype = {
         this.element(prefix + 'panel').
             toggleClass('panel-success', success).
             toggleClass('panel-info', !success);
+    },
+
+    markLocation: function(data) {
+        if (!map) {
+            return;
+        }
+
+        var lat = 0, lng = 0;
+        if (data.location) {
+            lat = data.location.latitude;
+            lng = data.location.longitude;
+        }
+
+        if (lat == 0 || lng == 0) {
+            if (!data.droid) {
+                return;
+            }
+
+            lat = data.droid.latitude;
+            lng = data.droid.longitude;
+        }
+
+        if (lat == 0 || lng == 0) {
+            return;
+        }
+
+        if (!this.marker) {
+            this.marker = new google.maps.Marker({
+                title: 'PEPPER-2',
+                icon: 'img/hab-icon.png',
+                map: map
+            });
+        }
+
+        var latlng = new google.maps.LatLng(lat, lng);
+        map.panTo(latlng);
+        this.marker.setPosition(latlng);
     },
 
     element: function(id) {

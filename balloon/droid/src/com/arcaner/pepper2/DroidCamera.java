@@ -69,7 +69,12 @@ public class DroidCamera extends Activity
                 WindowManager.LayoutParams.FLAG_FULLSCREEN);
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT);
 
-        initCamera();
+        if (!initCamera()) {
+            Intent resultIntent = new Intent();
+            resultIntent.putExtra(RESULT_IMAGE_COUNT, imageCount);
+            setResult(RESULT_CANCELED, resultIntent);
+            finish();
+        }
 
         mSurfaceView = new SurfaceView(this);
         setContentView(mSurfaceView);
@@ -81,9 +86,10 @@ public class DroidCamera extends Activity
         mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
     }
 
-    private void initCamera() {
+    private boolean initCamera() {
         if (!safeCameraOpen()) {
             Log.e(TAG, "Couldn't open camera");
+            return false;
         }
 
         Camera.Parameters params = mCamera.getParameters();
@@ -92,6 +98,7 @@ public class DroidCamera extends Activity
         params.setJpegThumbnailQuality(75);
         params.setJpegThumbnailSize(THUMB_WIDTH, THUMB_HEIGHT);
         mCamera.setParameters(params);
+        return true;
     }
 
     private boolean safeCameraOpen() {
