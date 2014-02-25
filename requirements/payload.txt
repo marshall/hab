@@ -1,0 +1,9 @@
+Adafruit-BBIO==0.0.19
+PyBluez==0.18
+gevent==1.0
+greenlet==0.4.2
+mock==1.0.1
+-e git+https://github.com/marshall/pynmea@39bfc18ede6d0ed898e329f844e7d0b28926482c#egg=pynmea-master
+pyserial==2.7
+spidev==2.0
+wsgiref==0.1.2
