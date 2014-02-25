@@ -89,8 +89,12 @@ class Radio(object):
         self.write(str + '\r\n')
 
     def write(self, str):
-        gevent.socket.wait_write(self.serial.fileno())
-        self.serial.write(str)
+        try:
+            gevent.socket.wait_write(self.serial.fileno())
+            self.serial.write(str)
+            self.serial.flush()
+        except:
+            pass
 
     def next_msg(self, f):
         try:

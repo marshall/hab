@@ -218,11 +218,13 @@ class TelemetryMsg(Msg):
     mode_ascent     = 1
     mode_descent    = 2
     mode_landed     = 3
+    cpu_unknown     = 127
+    temp_unknown    = -999.999
 
     data_struct = struct.Struct('!LBBHfff')
-    data_attrs  = (('uptime', 0), ('mode', 0), ('cpu_usage', 0),
-                   ('free_mem', 0), ('int_temperature', 0), ('int_humidity', 0),
-                   ('ext_temperature', 0))
+    data_attrs  = (('uptime', 0), ('mode', mode_preflight), ('cpu_usage', cpu_unknown),
+                   ('free_mem', 0), ('int_temperature', temp_unknown), ('int_humidity', temp_unknown),
+                   ('ext_temperature', temp_unknown))
 
 @msg_type(2)
 class DroidTelemetryMsg(Msg):
@@ -322,7 +324,8 @@ class MsgReader(object):
                                                       self.msg.msg_len,
                                                       ' '.join(('%x' % c for c in self.buffer[:Msg.header_end])))
         except BadMarker, e:
-            self.log.warn('Bad start marker, discarding %d out of sync bytes', self.index)
+            self.log.warn('Bad start marker, discarding %d out of sync bytes: %s', self.index,
+                          ' '.join(('%x' % c for c in self.buffer[:Msg.header_end])))
             self.index = 0
             raise
 

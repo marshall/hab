@@ -1,0 +1,49 @@
+{% macro data_column(id, label, classes='col-xs-5', glyph=None) %}
+      <div class="{{ classes }} col-md-4">
+        <span class="data" id="{{ id }}">?</span>
+        <div class="data-label">
+          <span class="label label-default">
+            {% if glyph -%}
+              <span class="glyphicon glyphicon-{{ glyph }}"></span>
+            {%- endif %} {{ label }}
+          </span>
+        </div>
+      </div>
+{% endmacro %}
+
+<div class="panel panel-primary">
+  <div class="panel-heading">
+    <h4>
+      <span class="glyphicon glyphicon-map-marker"></span>
+      PEPPER-2
+    </h4>
+  </div> <!-- panel-heading -->
+
+  <div class="panel-body">
+    <div class="row">
+
+      <div id="hab-info-thumbnail" class="tiny-padding">
+        <a href="#" class="thumbnail">
+          <img data-src="holder.js/256x192/sky/auto/text:PEPPER-2 Android Camera" alt="PEPPER-2 droid camera">
+        </a>
+      </div> <!-- hab-info-thumbnail -->
+
+      <div id="hab-info-data" class="tiny-padding">
+        {{ data_column('location_latitude', 'LATITUDE', classes='col-xs-hidden') }}
+        {{ data_column('location_longitude', 'LONGITUDE', classes='col-xs-hidden') }}
+        {{ data_column('location_altitude', 'ALTITUDE') }}
+        {{ data_column('cpu_usage', 'CPU USAGE', classes='col-xs-hidden') }}
+        {{ data_column('free_mem', 'MEMFREE', classes='col-xs-hidden') }}
+        {{ data_column('uptime', 'UPTIME') }}
+        {{ data_column('int_temperature', 'INT TEMP') }}
+        {{ data_column('int_humidity', 'INT HUMID', classes='landscape-xs-hidden') }}
+        {{ data_column('ext_temperature', 'EXT TEMP') }}
+        {{ data_column('droid_battery', 'BATTERY', classes='landscape-xs-hidden', glyph='phone') }}
+        {{ data_column('droid_radio', 'CELL RADIO', classes='col-xs-hidden', glyph='phone') }}
+        {{ data_column('droid_photo_count', 'PHOTOS', classes='col-xs-hidden', glyph='phone') }}
+        {{ data_column('droid_accel_state', 'ACCEL', classes='col-xs-hidden', glyph='phone') }}
+        {{ data_column('droid_accel_duration', 'ACCEL DUR', classes='col-xs-hidden', glyph='phone') }}
+      </div> <!-- hab-info-data -->
+    </div> <!-- row -->
+  </div> <!-- panel-body -->
+</div> <!-- panel -->

@@ -2,10 +2,47 @@ var map = null;
 function initMap() {
     var mapOptions = {
         zoom: 15,
-        center: new google.maps.LatLng(-34.397, 150.644)
+        streetViewControl: false,
+        panControl: true,
+        panControlOptions: {
+            position: google.maps.ControlPosition.TOP_RIGHT
+        },
+        zoomControl: true,
+        zoomControlOptions: {
+            style: google.maps.ZoomControlStyle.LARGE,
+            position: google.maps.ControlPosition.TOP_RIGHT
+        },
+        center: new google.maps.LatLng(-34.397, 150.644),
     };
 
-    map = new google.maps.Map(document.getElementById('map'), mapOptions);
+    var mapEl = document.getElementById('map')
+    map = new google.maps.Map(mapEl, mapOptions);
+}
+
+var columnClasses = '';
+for (var i = 2; i <= 12; i+= 2) {
+    columnClasses += 'col-xs-' + i + ' ';
+    columnClasses += 'col-sm-' + i + ' ';
+    columnClasses += 'col-md-' + i + ' ';
+    columnClasses += 'col-lg-' + i + ' ';
+}
+
+function onOrientationChange(event) {
+    console.log('new orientation:', event.orientation);
+    var els = $('#hab-info, #map, #hab-info-thumbnail, #hab-info-data');
+    els.removeClass();
+    $('#hab-info-thumbnail,#hab-info-data').addClass('tiny-padding')
+
+    if (event.orientation === 'portrait') {
+        $('#hab-info, #map').addClass('col-xs-12');
+        $('#hab-info-thumbnail, #hab-info-data').addClass('col-xs-6');
+    } else {
+        $('#hab-info').addClass('col-xs-4 col-md-3');
+        $('#map').addClass('col-xs-8 col-md-9');
+        $('#hab-info-thumbnail, #hab-info-data').addClass('col-xs-12');
+    }
+
+    $('#map').css('height', $(window).height());
 }
 
 function DOMMapper() {
@@ -28,10 +65,10 @@ DOMMapper.prototype = {
     formatters: {
         cpu_usage: '%0.1f%%',
         free_mem: '%d MB',
-        humidity: '%0d%%',
+        int_humidity: '%0d%%',
         location_latitude: latLongFmt,
         location_longitude: latLongFmt,
-        location_altitude: '%0.1f',
+        location_altitude: '%0.1f KM',
         droid_latitude: latLongFmt,
         droid_longitude: latLongFmt
     },
@@ -52,12 +89,20 @@ DOMMapper.prototype = {
             this.element('mode').text(sprintf('%8s', mode.toUpperCase()));
         },
 
-        temperature: function(temp) {
-            this.element('temperature').text(sprintf('%0.1fF', 1.8 * temp + 32));
+        int_temperature: function(temp) {
+            this.element('int_temperature').text(sprintf('%0.1fF', 1.8 * temp + 32));
+        },
+
+        ext_temperature: function(temp) {
+            this.element('ext_temperature').text(sprintf('%0.1fF', 1.8 * temp + 32));
         },
 
         location: function(location) {
             this.mapData(location, 'location_');
+            this.element('position').text(
+                sprintf(latLongFmt, location.latitude) + ', ' +
+                sprintf(latLongFmt, location.longitude) + ', ' +
+                sprintf('%0.1f KM', location.altitude));
         },
 
         droid: function(droid) {
@@ -222,5 +267,9 @@ $(document).ready(function($) {
         $.getJSON('/api').done(handleData);
     }
 
+    hideAddressbar('#main')
+
+    $(window).on('orientationchange', onOrientationChange);
+    $(window).orientationchange();
     updateTimer = setInterval(updateData, 1000);
 });

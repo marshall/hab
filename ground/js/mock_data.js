@@ -26,8 +26,9 @@ MockData.prototype = {
     nextData: function MockData_nextData() {
         this.uptime++;
         this.cpu_usage = this.randInt(0, 100);
-        this.temperature = this.randInt(-40, 100);
-        this.humidity = this.randInt(0, 100);
+        this.int_temperature = this.randInt(-40, 100);
+        this.int_humidity = this.randInt(0, 100);
+        this.ext_temperature = this.randInt(-40, 100);
         this.free_mem = this.randInt(0, 512);
         this.mode = flightModes[this.randInt(0, flightModes.length - 1)];
 

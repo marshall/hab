@@ -2,7 +2,9 @@
 <html>
   <head>
     <title>PEPPER-2 ground station</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
     <link href="css/bootstrap.min.css" rel="stylesheet" media="screen">
     <link href="css/bootstrap-theme.min.css" rel="stylesheet" media="screen">
     <link href="css/ground_station.css" rel="stylesheet" media="screen">
@@ -10,141 +12,22 @@
 
   <body>
 
-  <div class="container-fluid">
-    <nav class="navbar navbar-default" role="navigation">
-      <div class="container-fluid">
-        <div class="navbar-header">
-          <a href="#" class="navbar-brand">PEPPER-2</a>
-        </div>
-        <div class="navbar-collapse collapse">
-          <ul class="navbar-nav nav">
-            <li class="active"><a href="#">Home</a></li>
-            <li><a href="#">Map</a></li>
-          </ul>
-        </div>
-      </div>
-    </nav>
-
+  <div id="main" class="container-fluid">
     <div class="row">
-      <div class="col-md-4">
-        <!--div class="panel panel-half panel-default" id="system_panel">
-          <div class="panel-heading">
-            <h3 class="panel-title">System</h3>
-          </div>
-          <div class="panel-body"-->
-            <table class="table table-striped table-condensed">
-              <thead>
-                <tr>
-                  <td class="data-label" colspan="6">SYSTEM</td>
-                </tr>
-                <tr class="success">
-                  <th class="col-md-2">MODE</th>
-                  <th class="col-md-2">UPTIME</th>
-                  <th class="col-md-2">CPU</th>
-                  <th class="col-md-2">MEMFREE</th>
-                  <th class="col-md-2">TEMP</th>
-                  <th class="col-md-2">HUMIDITY</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td id="mode" class="data col-md-2"></td>
-                  <td id="uptime" class="data col-md-2"></td>
-                  <td id="cpu_usage" class="data col-md-2"></td>
-                  <td id="free_mem" class="data col-md-2"></td>
-                  <td id="temperature" class="data col-md-2"></td>
-                  <td id="humidity" class="data col-md-2"></td>
-                </tr>
-              </tbody>
-            </table>
-          <!--/div>
-        </div-->
+      <div id="hab-info">
+        {% include 'hab_info.html' %}
       </div>
-      <div class="col-md-4">
-        <table class="table table-striped table-condensed">
-          <thead>
-            <tr>
-              <td class="data-label" colspan="6">GPS LOCATION</td>
-            </tr>
-            <tr class="success">
-              <th class="col-md-2">LATITUDE</th>
-              <th class="col-md-2">LONGITUDE</th>
-              <th class="col-md-2">ALTITUDE</th>
-              <th class="col-md-2">QUALITY</th>
-            </tr>
-          </thead>
-          <tbody>
-          <tr>
-            <td id="location_latitude" class="data col-md-2"></td>
-            <td id="location_longitude" class="data col-md-2"></td>
-            <td id="location_altitude" class="data col-md-2"></td>
-            <td id="location_quality" class="data col-md-2"></td>
-          </tr>
-          </tbody>
-        </table>
+      <div id="map">
       </div>
-      <div class="col-md-4">
-        <table class="table table-striped table-condensed">
-          <thead>
-            <tr>
-              <td class="data-label" colspan="6">ANDROID</td>
-            </tr>
-            <tr class="success">
-              <th class="col-md-2">BATTERY</th>
-              <th class="col-md-2">RADIO</th>
-              <th class="col-md-2">ACC</th>
-              <th class="col-md-2">ACC DUR</th>
-              <th class="col-md-2">PHOTOS</th>
-              <th class="col-md-2">LATITUDE</th>
-              <th class="col-md-2">LONGITUDE</th>
-            </tr>
-          </thead>
-          <tbody>
-          <tr>
-            <td id="droid_battery" class="data col-md-2"></td>
-            <td id="droid_radio" class="data col-md-2"></td>
-            <td id="droid_accel_state" class="data col-md-2"></td>
-            <td id="droid_accel_duration" class="data col-md-2"></td>
-            <td id="droid_photo_count" class="data col-md-2"></td>
-            <td id="droid_latitude" class="data col-md-2"></td>
-            <td id="droid_longitude" class="data col-md-2"></td>
-          </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="col-md-4">
-        <table class="table">
-          <thead>
-            <tr>
-              <td class="data-label" colspan="6">PHOTOS</td>
-            </tr>
-            <tr class="success">
-              <th class="col-md-2">INDEX</th>
-              <th class="col-md-2">CHUNKS</th>
-              <th class="col-md-6">PROGRESS</th>
-            </tr>
-          </thead>
-          <tbody id="photo_download_tbody">
-          </tbody>
-        </table>
-      </div>
-
-      <div class="col-md-8" id="map">
-        &nbsp;
-      </div>
-
-    </div>
-
-    <div class="footer">
     </div>
   </div>
 
   <script src="js/jquery-2.1.0.min.js"></script>
+  <script src="js/jquery.mobile-1.4.1.min.js"></script>
   <script src="js/bootstrap.min.js"></script>
   <script src="js/sprintf.min.js"></script>
+  <script src="js/holder.min.js"></script>
+  <script src="js/hideAddressbar.min.js"></script>
 
   <script src="js/mock_data.js"></script>
   <script src="js/ground_station.js"></script>

@@ -20,17 +20,39 @@ body {
     font-family: 'Open Sans';
 }
 
-h3 {
-    font-size: 0.75em;
+td {
+    font-size: 0.9em;
 }
 
-.data {
-    font-size: 0.75em;
+#hab-info, #map {
+    padding-left: 0em;
+    padding-right: 0em;
 }
 
-th, .data-label {
-    font-size: 0.75em;
-    font-weight: bold;
+.data-label {
+    font-size: 0.9em;
+}
+
+.thumbnail {
+    padding: 0.1em;
+    margin-bottom: 0.2em;
+}
+
+#hab-info-thumbnail {
+    padding-right: 15px;
+}
+
+.panel {
+    margin-bottom: 0em;
+}
+
+.panel .row {
+    margin-left: 0em;
+    padding-bottom: 0.2em;
+}
+
+.data-label .label {
+    font-size: 0.85em;
 }
 
 .progress-bar-incomplete {
@@ -43,4 +65,66 @@ th, .data-label {
 
 #map {
     height: 30em;
+}
+
+/*#hab-info {
+    padding: 0em;
+    z-index: 100;
+    position: absolute;
+    margin: 0.5em 0 0 0.5em;
+}*/
+
+.panel-heading {
+    padding: 0.2em;
+}
+
+.panel-heading h4 {
+    margin: 0em;
+    font-size: 1.5em;
+}
+
+.panel-body, .tiny-padding {
+    padding: 0.1em;
+}
+
+@media (max-width: 767px) and (orientation: landscape) {
+    .landscape-xs-hidden {
+        display: none;
+    }
+}
+
+@media (max-width: 767px) {
+    .panel-heading h4 {
+        font-size: 1em;
+    }
+
+    .data-label .label {
+        font-size: 0.75em;
+    }
+
+    .data {
+        font-size: 0.85em;
+    }
+
+    .col-xs-hidden, .col-sm-hidden, .col-md-hidden, .col-lg-hidden {
+        display: none;
+    }
+}
+
+@media (min-width: 768px) and (max-width: 991px) {
+    .col-sm-hidden, .col-md-hidden, .col-lg-hidden {
+        display: none;
+    }
+}
+
+@media (min-width: 992px) and (max-width: 1199px) {
+    .col-md-hidden, .col-lg-hidden {
+        display: none;
+    }
+}
+
+@media (min-width: 1200px) {
+    .col-lg-hidden {
+        display: none;
+    }
 }

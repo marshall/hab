@@ -9,6 +9,7 @@ import cherrypy
 from cherrypy.lib.static import serve_file
 import gevent
 import gevent.wsgi
+import gevent.server
 import gevent.socket as socket
 
 from pynmea import nmea
@@ -70,8 +71,9 @@ class GSWebapp(object):
                         mode=t.modes[t.mode],
                         cpu_usage=t.cpu_usage,
                         free_mem=t.free_mem,
-                        temperature=t.temperature,
-                        humidity=t.humidity)
+                        int_temperature=t.int_temperature,
+                        int_humidity=t.int_humidity,
+                        ext_temperature=t.ext_temperature)
 
         if self.gs.location:
             l = self.gs.location
@@ -153,27 +155,41 @@ class PhotoData(object):
         self.url = '/photos/%03d.jpg' % self.index
 
 class GroundStation(object):
-    def __init__(self, port):
+    bind_port = 9910
+
+    def __init__(self, mock=False, serial_port=None, serial_baud=9600,
+                 tcp_addr=None, forward_addr=None, listen=False):
         self.log = logging.getLogger('ground_station')
         self.reader = proto.MsgReader()
-        self.mock = False
+        self.mock = mock
+        self.forward_addr = forward_addr
+        self.forward_socket = None
         self.location = None
         self.telemetry = None
         self.droid_telemetry = None
         self.photo_status = []
 
-        if port == 'mock':
-            gevent.spawn(self.mock_main_loop)
-            return
-        elif ':' in port:
+        job = self.main_loop
+        if mock:
+            job = self.mock_main_loop
+        elif tcp_addr:
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            host, port = port.split(':')
-            self.socket.connect((host, port))
+            self.socket.connect(self.to_addr(tcp_addr, 12345))
             self.stream = self.socket.makefile()
-        else:
-            self.stream = serial.Serial(port=port, baudrate=115200, timeout=1)
+        elif serial_port:
+            self.stream = serial.Serial(port=serial_port, baudrate=serial_baud, timeout=1)
+            job = self.main_loop
+        elif listen:
+            self.server = gevent.server.StreamServer(('0.0.0.0', self.bind_port), self.handle_client)
+            job = self.server.serve_forever
 
-        gevent.spawn(self.main_loop)
+        gevent.spawn(job)
+
+    def to_addr(self, host, default_port):
+        port = default_port
+        if ':' in host:
+            host, port = host.split(':')
+        return (host, port)
 
     def get_photo_status(self, photo):
         status = filter(lambda s: s.index == photo.index, self.photo_status)
@@ -188,7 +204,26 @@ class GroundStation(object):
         status = self.get_photo_status(chunk)
         status.save_chunk(chunk)
 
+    def forward_message(self, msg):
+        try:
+            if not self.forward_socket:
+                self.forward_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.forward_socket.connect(self.to_addr(self.forward_addr, self.bind_port))
+
+            self.forward_socket.send(msg.as_buffer())
+        except socket.error, e:
+            try:
+                if self.forward_socket:
+                    self.forward_socket.close()
+            except:
+                pass
+            finally:
+                self.forward_socket = None
+
     def process_message(self, msg):
+        if self.forward_addr:
+            gevent.spawn(lambda: self.forward_message(msg))
+
         if isinstance(msg, proto.LocationMsg):
             self.location = msg
         elif isinstance(msg, proto.TelemetryMsg):
@@ -197,6 +232,12 @@ class GroundStation(object):
             self.droid_telemetry = msg
         elif isinstance(msg, proto.PhotoDataMsg):
             self.maybe_save_chunk(msg)
+
+    def handle_client(self, socket, addr):
+        self.log.info('New connection from %s:%s', *addr)
+        self.socket = socket
+        self.stream = socket.makefile()
+        self.main_loop()
 
     def main_loop(self):
         try:
@@ -209,7 +250,7 @@ class GroundStation(object):
                 except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
                     pass
 
-                gevent.sleep(0.25)
+                gevent.sleep(0.1)
         except:
             self.log.exception('exception')
             pass
@@ -221,11 +262,23 @@ class GroundStation(object):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('port', help='Serial port to listen to')
+    parser.add_argument('--mock', default=False, action='store_true', help='Use mock data')
+    parser.add_argument('--port', default=None, help='Serial port to listen to')
+    parser.add_argument('--baud', default=9600, type=int, help='Serial port baudrate')
+    parser.add_argument('--tcp', default=None, help='Connect to a TCP host[:port]. default port is 12345')
+    parser.add_argument('--forward-addr', default=None, help='Forward messages to TCP host[:port]. default port is 9910')
+    parser.add_argument('--listen', default=False, action='store_true', help='Listen on 0.0.0.0:9910 for incoming messages')
+
     args = parser.parse_args()
 
-    gs = GroundStation(args.port)
+    print 'Create GS'
+    gs = GroundStation(mock=args.mock, serial_port=args.port,
+                       serial_baud=args.baud, tcp_addr=args.tcp,
+                       forward_addr=args.forward_addr, listen=args.listen)
+
+    print 'Create webapp'
     webapp = GSWebapp(gs)
+    print 'Serve webapp forever'
     webapp.serve_forever()
 
 if __name__ == '__main__':
