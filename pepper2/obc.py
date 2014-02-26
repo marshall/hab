@@ -178,14 +178,17 @@ class OBC(object):
             self.timers.append(obc_timer)
 
 class System(object):
+    cpu_usage = 0
+    free_mem = 0
+    total_procs = 0
+    total_mem = 0
+    uptime = 0
+
     def __init__(self, obc):
         self.time_set = False
         self.obc = obc
         self.log = logging.getLogger('sys')
-        self.helper = os.path.join(this_dir, 'sys_helper.sh')
-        for key, val in dict(uptime=0, total_procs=0, cpu_usage=0,
-                total_mem=0, free_mem=0).iteritems():
-            setattr(self, key, val)
+        self.helper = os.path.join(this_dir, 'system', 'sys_helper.sh')
 
     def update_stats(self):
         try:
