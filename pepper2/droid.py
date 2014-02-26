@@ -125,10 +125,11 @@ class Droid(object):
             setattr(self, name, getattr(msg, name))
 
         self.droid_telemetry = msg
+        log.message(msg)
 
     def handle_photo_data(self, msg):
         '''self.photo_data.append(msg)'''
-        self.obc.send_message(msg)
+        self.obc.send_message(msg, src='droid')
 
     @property
     def connected(self):

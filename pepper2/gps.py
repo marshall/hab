@@ -25,7 +25,6 @@ class GPS(object):
         self.satellites = self.speed = 0
         self.fixes = collections.deque([], self.fix_count)
 
-        self.log.debug('setting up')
         Adafruit_BBIO.UART.setup(self.uart)
         self.serial = serial.Serial(port=self.port,
                                     baudrate=self.baud,
@@ -62,7 +61,6 @@ class GPS(object):
             return
 
         ts_hr, ts_min, ts_sec = int(timestamp[0:2]), int(timestamp[2:4]), float(timestamp[4:])
-        self.log.debug('timestamp = %d:%d:%0.2f', ts_hr, ts_min, ts_sec)
 
     def gps_loop(self):
         self.running = True

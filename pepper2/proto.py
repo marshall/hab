@@ -258,7 +258,7 @@ class PhotoDataMsg(Msg):
 @msg_type(10)
 class StartPhotoDataMsg(Msg):
     data_struct = struct.Struct('!H')
-    data_attrs = ('index')
+    data_attrs = (('index', 0))
 
 @msg_type(11)
 class StopPhotoDataMsg(Msg):

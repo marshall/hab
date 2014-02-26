@@ -38,7 +38,6 @@ class Timer(object):
         if not self.running:
             return
 
-        self.log.debug('calling ' + self.fn.__name__)
         self.fn()
         gevent.spawn_later(self.interval, self)
 
@@ -73,10 +72,8 @@ class OBC(object):
         self.ds18b20 = temperature.DS18B20()
         self.running = False
 
-        self.start_timers((self.sensor_interval, self.sensor_update),
-                          (self.sys_interval, self.sys_update),
+        self.start_timers((self.sys_interval, self.sys_update),
                           (self.msg_interval, self.send_all_messages))
-
         self.log.info('OBC booted in %0.2f seconds', time.time() - self.begin)
 
     def shutdown(self):
@@ -86,7 +83,6 @@ class OBC(object):
 
         self.droid.shutdown()
         self.radio.shutdown()
-        #self.sensors.shutdown()
 
     def __del__(self):
         self.shutdown()
@@ -108,14 +104,6 @@ class OBC(object):
         self.uptime_min = int((uptime - hrSecs) / 60)
         self.uptime_sec = int(uptime - hrSecs - (self.uptime_min * 60))
         self.sys.update()
-
-    def sensor_update(self):
-        #dht22.update(self.dht22_pin)
-        #self.gps.update()
-        #self.temp.update()
-        #self.maybe_update_mode()
-        # TODO find a way to update mode more accurately
-        pass
 
     def maybe_update_mode(self):
         if len(self.gps.fixes) != self.gps.fix_count:
@@ -154,11 +142,11 @@ class OBC(object):
         ppr2_nmea += '*' + pynmea.utils.checksum_calc(ppr2_nmea)
         return ppr2_nmea
 
-    def send_message(self, msg, **kwargs):
+    def send_message(self, msg, src='obc', **kwargs):
         if not isinstance(msg, proto.Msg):
             msg = msg.from_data(**kwargs)
 
-        self.log.info(str(msg))
+        self.log.message(msg)
         self.radio.write(msg.as_buffer())
 
     def send_all_messages(self):

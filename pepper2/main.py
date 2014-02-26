@@ -1,17 +1,13 @@
 import argparse
-import logging
+import logging, logging.handlers
 import os
 
-def setup_logging():
-    logging.basicConfig(format='[%(asctime)s][%(name)s:%(levelname)s] %(message)s',
-                        level=logging.INFO)
-
 def main():
+    import log
     import obc
     import radio
-    setup_logging()
 
-    setup_logging()
+    log.setup()
     parser = argparse.ArgumentParser()
     parser.add_argument('--tcp', action='store_true', default=False)
     args = parser.parse_args()

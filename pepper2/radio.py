@@ -108,7 +108,11 @@ class Radio(object):
     def handle_msg(self, msg):
         # TODO handle msg
         # self.obc.droid.set_photo_index(sentence.photo_index)
-        pass
+        if not isinstance(msg, (proto.StartPhotoDataMsg, proto.StopPhotoDataMsg,
+                            proto.SendTextMsg, proto.AddPhoneNumberMsg)):
+            return
+
+        self.log.message(msg)
 
     def radio_loop(self):
         self.running = True
