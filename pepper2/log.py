@@ -27,7 +27,8 @@ def setup(filename=DEFAULT_FILENAME):
     stdout_handler.setFormatter(formatter)
     root_logger.addHandler(stdout_handler)
 
-    file_handler = logging.handlers.RotatingFileHandler(filename, maxBytes=10*1024*1024, backupCount=10)
-    file_handler.setFormatter(formatter)
-    file_handler.setLevel(DATA)
-    root_logger.addHandler(file_handler)
+    if filename:
+        file_handler = logging.handlers.RotatingFileHandler(filename, maxBytes=10*1024*1024, backupCount=10)
+        file_handler.setFormatter(formatter)
+        file_handler.setLevel(DATA)
+        root_logger.addHandler(file_handler)

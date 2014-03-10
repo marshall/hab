@@ -1,4 +1,5 @@
 from collections import namedtuple
+from cStringIO import StringIO
 import logging
 import struct
 
@@ -143,6 +144,13 @@ class Msg(object):
         self.marker_struct.pack_into(self._buffer, data_end, self.end)
         self._get_header()
         self.validate_data()
+
+    def as_dict(self):
+        d = {}
+        if self.data_attrs:
+            for name, _ in self.data_attrs:
+                d[name] = getattr(self, name)
+        return d
 
     def as_buffer(self):
         return buffer(self._buffer, 0, self._buffer_len)
@@ -293,7 +301,13 @@ class MsgReader(object):
         self.msg = None
         self.index = 0
 
-    def read(self, f):
+    def update(self, data):
+        self.read(StringIO(data), eof_reset=False)
+        if self.state == self.state_end:
+            return self.msg
+        return None
+
+    def read(self, f, eof_reset=True):
         while self.state != self.state_end:
             b = f.read(1)
             if b == '':
@@ -307,8 +321,10 @@ class MsgReader(object):
             elif self.state == self.state_data:
                 self.handle_data_byte()
 
-        self.state = self.state_header
-        self.index = 0
+        if eof_reset:
+            self.state = self.state_header
+            self.index = 0
+
         return self.msg
 
     def handle_header_byte(self):

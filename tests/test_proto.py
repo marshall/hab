@@ -57,15 +57,16 @@ class LocationMsgTest(unittest.TestCase):
 
     def test_reader(self):
         reader = proto.MsgReader()
-        msg = reader.read(StringIO(self.data))
-        self.assertNotEqual(msg, None)
-        self.assertAlmostEqual(msg.latitude, 1.1)
-        self.assertAlmostEqual(msg.longitude, 2.2)
-        self.assertAlmostEqual(msg.altitude, 3.3)
-        self.assertEqual(msg.quality, 100)
-        self.assertEqual(msg.satellites, 5)
-        self.assertEqual(msg.speed, 2)
-        self.assertSequenceEqual(msg.as_buffer(), self.data)
+        for i in range(0, 10):
+            msg = reader.read(StringIO(self.data))
+            self.assertNotEqual(msg, None)
+            self.assertAlmostEqual(msg.latitude, 1.1)
+            self.assertAlmostEqual(msg.longitude, 2.2)
+            self.assertAlmostEqual(msg.altitude, 3.3)
+            self.assertEqual(msg.quality, 100)
+            self.assertEqual(msg.satellites, 5)
+            self.assertEqual(msg.speed, 2)
+            self.assertSequenceEqual(msg.as_buffer(), self.data)
 
     def test_build(self):
         location_msg = proto.LocationMsg.from_data(latitude=1.1, longitude=2.2,

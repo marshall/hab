@@ -7,6 +7,8 @@ import time
 import gevent
 import gevent.subprocess as subprocess
 
+import pepper2
+
 this_dir = os.path.abspath(os.path.dirname(__file__))
 dht22_bin = os.path.join(this_dir, 'build/dht22')
 
@@ -17,20 +19,17 @@ for header in (8, 9):
         PINS['P%d_%d' % (header, pin)] = p
         p += 1
 
-class DHT22(object):
+class DHT22(pepper2.Worker):
+    worker_interval = 10
+
     pin = str(PINS['P8_17'])
     temp = 0
     humidity = 0
 
-    def __init__(self):
-        self.running = False
-        self.log = logging.getLogger('dht22')
-        gevent.spawn(self.dht22_loop)
-
     def fahrenheit(self):
         return 1.8 * self.temp + 32
 
-    def update(self):
+    def work(self):
         try:
             args = [dht22_bin, '-p', self.pin]
             result = subprocess.check_output(args)
@@ -47,9 +46,3 @@ class DHT22(object):
             self.humidity = result['humidity']
         except subprocess.CalledProcessError, e:
             return
-
-    def dht22_loop(self):
-        self.running = True
-        while self.running:
-            self.update()
-            gevent.sleep(10)

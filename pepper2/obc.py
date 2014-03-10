@@ -17,6 +17,7 @@ from proto import TelemetryMsg, LocationMsg
 import radio
 import screen
 import temperature
+import worker
 
 this_dir = os.path.abspath(os.path.dirname(__file__))
 
@@ -41,69 +42,61 @@ class Timer(object):
         self.fn()
         gevent.spawn_later(self.interval, self)
 
-class OBC(object):
+class Uptime(worker.Worker):
+    hours = minutes = seconds = total = 0
+    def __init__(self):
+        self.begin = time.time()
+        super(Uptime, self).__init__()
+
+    def as_dict(self):
+        return dict(hours=self.hours,
+                    minutes=self.minutes,
+                    seconds=self.seconds)
+
+    def work(self):
+        self.total = time.time() - self.begin
+        self.hours = int(self.total / 3600)
+        hrSecs = self.hours * 3600
+        self.minutes = int((self.total - hrSecs) / 60)
+        self.seconds = int(self.total - hrSecs - (self.minutes * 60))
+
+class OBC(worker.Worker):
     modes = TelemetryMsg.modes
     mode_preflight  = TelemetryMsg.mode_preflight
     mode_ascent     = TelemetryMsg.mode_ascent
     mode_descent    = TelemetryMsg.mode_descent
     mode_landed     = TelemetryMsg.mode_landed
 
-    sensor_interval        = 0.3
-    sys_interval           = 1.0
-    msg_interval           = 5.0
-
-    telemetry_format = '{uptime:0.0f},{mode},{sys.cpu_usage:02.1f},' \
-                       '{sys.free_mem_mb:02.1f},{temp.fahrenheit:+0.1f}F,' \
-                       '{temp.humidity:+0.1f}'
+    worker_interval = 5.0
 
     def __init__(self, radio_type=radio.Radio):
-        self.begin = time.time()
-        self.uptime_hr = self.uptime_min = self.uptime_sec = 0
+        self.uptime = Uptime()
+        super(OBC, self).__init__()
         self.telemetry = {}
-        self.timers = []
         self.mode = self.mode_preflight
         self.log = logging.getLogger('obc')
         self.sys = System(self)
-        self.radio = radio_type(self)
+        self.radio = radio_type(handler=self.handle_message)
         self.screen = screen.Screen(self)
         self.droid = droid.Droid(self)
         self.gps = gps.GPS()
         self.dht22 = temperature.DHT22()
         self.ds18b20 = temperature.DS18B20()
-        self.running = False
+        self.jobs = (self.uptime, self.sys, self.gps, self.dht22, self.ds18b20,
+                     self.radio, self.droid, self.screen)
 
-        self.start_timers((self.sys_interval, self.sys_update),
-                          (self.msg_interval, self.send_all_messages))
-        self.log.info('OBC booted in %0.2f seconds', time.time() - self.begin)
+    def started(self):
+        for job in self.jobs:
+            job.start()
 
-    def shutdown(self):
-        self.running = False
-        for timer in self.timers:
-            timer.stop()
+        self.log.info('OBC booted in %0.2f seconds', time.time() - self.uptime.begin)
 
-        self.droid.shutdown()
-        self.radio.shutdown()
+    def stopped(self):
+        for job in self.jobs:
+            job.stop()
 
     def __del__(self):
-        self.shutdown()
-
-    def get_uptime(self):
-        return dict(hours=self.uptime_hr, minutes=self.uptime_min,
-                    seconds=self.uptime_sec)
-
-    def main_loop(self):
-        self.running = True
-        while self.running:
-            gevent.sleep(2)
-
-    def sys_update(self):
-        now = time.time()
-        uptime = now - self.begin
-        self.uptime_hr = int(uptime / 3600)
-        hrSecs = self.uptime_hr * 3600
-        self.uptime_min = int((uptime - hrSecs) / 60)
-        self.uptime_sec = int(uptime - hrSecs - (self.uptime_min * 60))
-        self.sys.update()
+        self.stop()
 
     def maybe_update_mode(self):
         if len(self.gps.fixes) != self.gps.fix_count:
@@ -137,10 +130,10 @@ class OBC(object):
     def on_landed(self):
         pass
 
-    def build_nmea(self, type, sentence):
-        ppr2_nmea = '$PPR2%s,%s' % (type, sentence)
-        ppr2_nmea += '*' + pynmea.utils.checksum_calc(ppr2_nmea)
-        return ppr2_nmea
+    def handle_message(self, msg):
+        if isinstance(msg, (proto.StartPhotoDataMsg, proto.StopPhotoDataMsg,
+                            proto.SendTextMsg, proto.AddPhoneNumberMsg)):
+            self.droid.send_message(msg)
 
     def send_message(self, msg, src='obc', **kwargs):
         if not isinstance(msg, proto.Msg):
@@ -149,12 +142,12 @@ class OBC(object):
         self.log.message(msg)
         self.radio.write(msg.as_buffer())
 
-    def send_all_messages(self):
+    def work(self):
         for message in self.droid.telemetry:
             self.send_message(message)
 
         self.send_message(TelemetryMsg,
-                          uptime=int(time.time() - self.begin),
+                          uptime=int(self.uptime.total),
                           mode=self.mode,
                           cpu_usage=int(self.sys.cpu_usage),
                           free_mem=int(self.sys.free_mem/1024),
@@ -170,25 +163,20 @@ class OBC(object):
                           satellites=self.gps.satellites,
                           speed=self.gps.speed)
 
-    def start_timers(self, *timers):
-        obc_timers = []
-        for timer in timers:
-            obc_timer = Timer(*timer)
-            obc_timer.start()
-            self.timers.append(obc_timer)
-
-class System(object):
+class System(worker.Worker):
+    worker_interval = 5.0
     cpu_usage = 0
     free_mem = 0
     total_procs = 0
     total_mem = 0
     uptime = 0
 
+    helper = os.path.join(this_dir, 'system', 'sys_helper.sh')
+
     def __init__(self, obc):
+        super(System, self).__init__()
         self.time_set = False
         self.obc = obc
-        self.log = logging.getLogger('sys')
-        self.helper = os.path.join(this_dir, 'system', 'sys_helper.sh')
 
     def update_stats(self):
         try:
@@ -218,11 +206,11 @@ class System(object):
             return
 
         # we also need to reset the OBC uptime here..
-        new_begin = gps_time + timedelta(hours=self.obc.uptime_hr,
-                                         minutes=self.obc.uptime_min,
-                                         seconds=self.obc.uptime_sec)
+        new_begin = gps_time + timedelta(hours=self.obc.uptime.hours,
+                                         minutes=self.obc.uptime.minutes,
+                                         seconds=self.obc.uptime.seconds)
 
-        self.obc.begin = calendar.timegm(new_begin.utctimetuple())
+        self.obc.uptime.begin = calendar.timegm(new_begin.utctimetuple())
 
     def set_time(self, date_str, time_str):
         self.log.info('Updating system time: "%s" "%s"', date_str, time_str)
@@ -237,6 +225,6 @@ class System(object):
     def free_mem_mb(self):
         return self.free_mem / 1024.0
 
-    def update(self):
+    def work(self):
         self.update_stats()
         #self.maybe_update_time()

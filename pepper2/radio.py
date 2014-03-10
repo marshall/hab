@@ -1,66 +1,100 @@
+import base64
 import logging
 import socket
 
-import Adafruit_BBIO.UART as UART
 import gevent
+import gevent.socket
 from gevent.server import StreamServer
 
 from pynmea import nmea
 import serial
 
 import proto
+import worker
 
-class Radio(object):
-    uart = 'UART5'
-    port = '/dev/ttyO5'
-    baud = 9600
-
-    def __init__(self, obc):
-        self.log = logging.getLogger('radio')
-        self.obc = obc
-        self.setup_radio()
-        self.running = False
+class Radio(worker.ProtoMsgWorker):
+    def __init__(self, handler=None, port='/dev/ttyO5', baud=9600, uart='UART5',
+                 power_level=4, *args, **kwargs):
+        super(Radio, self).__init__(*args, **kwargs)
+        self.handler = handler
+        self.port = port
+        self.baud = baud
+        self.uart = uart
+        self.power_level = power_level
         self.connected = False
+        self.running = False
         self.address = '?'
         self.version_info = '?'
-        self.power_level = 0
-        gevent.spawn(self.radio_loop)
 
-    def shutdown(self):
-        self.running = False
+    def started(self):
+        if self.uart:
+            import Adafruit_BBIO.UART as UART
+            UART.setup(self.uart)
 
-    def setup_radio(self):
-        UART.setup(self.uart)
-        self.serial = serial.Serial(port=self.port,
-                                    baudrate=self.baud,
-                                    timeout=1)
+        self.file = serial.Serial(port=self.port,
+                                  baudrate=self.baud,
+                                  timeout=1)
 
-        result = self.send_AT('+++')
-        if len(result) > 0 and result[0] == 'OK':
+        self.log.info('Configuring radio')
+        self.write('+++')
+        if not self.read_OK():
+            self.log.warn('Warning: skipping configuration!')
             self.connected = True
+            return
 
-        result = self.send_AT('ATMY\r')
-        if len(result) > 0:
-            self.address = result[0]
+        self.connected = True
 
-        result = self.send_AT('ATVL\r')
+        self.log.info('connected:%s. getting address', self.connected)
+
+        self.write('ATMY\r')
+        self.address = self.read_AT_line()
+
+        self.log.info('address:%s. getting version info', self.address)
+        self.write('ATVL\r')
+        result = self.read_AT_lines()
         if len(result) > 0:
-            result.remove('OK')
+            if 'OK' in result:
+                result.remove('OK')
             self.version_info = '/'.join(result)
 
-        result = self.send_AT('ATPL\r')
+        self.log.info('version_info:%s. setting power level to %d', self.version_info, self.power_level)
+
+        self.write('ATPL %d\r' % self.power_level)
+        self.read_AT_lines()
+
+        self.write('ATPL\r')
+        result = self.read_AT_lines()
         if len(result) > 0:
             self.power_level = int(result[0])
 
-        self.send_AT('ATCN\r')
+        self.write('ATCN\r')
+        self.read_AT_lines()
         self.log.info('connected=%s, address=%s, version_info=%s, power_level=%d',
                       self.connected, self.address, self.version_info, self.power_level)
+
+    def read_OK(self):
+        try:
+            gevent.socket.wait_read(self.file.fileno(), timeout=4)
+            msg = self.file.read(3)
+            return msg == 'OK\r'
+        except socket.timeout, e:
+            return False
+
+        '''str = ''
+        while True:
+            c = self.file.read(1)
+            if not c:
+                continue
+
+            str += c[0]
+            if str == 'OK\r':
+                return'''
 
     def read_AT_line(self):
         response = []
         while True:
-            c = self.serial.read(1)
-            if c is None or c[0] == '\r':
+            c = self.file.read(1)
+            if c is None or len(c) == 0 or c[0] == '\r':
                 break
             response.append(c[0])
 
@@ -69,16 +103,14 @@ class Radio(object):
 
         return None
 
-    def send_AT(self, cmd):
-        self.serial.write(cmd)
+    def read_AT_lines(self):
         responses = []
-        response = []
         try:
-            gevent.socket.wait_read(self.serial.fileno(), timeout=5)
-            while self.serial.inWaiting() > 0:
+            while True:
                 response = self.read_AT_line()
-                if response:
-                    responses.append(response)
+                if not response:
+                    break
+                responses.append(response)
         except socket.timeout, e:
             pass
 
@@ -90,61 +122,80 @@ class Radio(object):
 
     def write(self, str):
         try:
-            gevent.socket.wait_write(self.serial.fileno())
-            self.serial.write(str)
-            self.serial.flush()
+            self.file.write(str)
+            self.file.flush()
         except:
             pass
 
-    def next_msg(self, f):
-        try:
-            msg = proto.MsgReader().read(f)
-            if msg:
-                self.handle_msg(msg)
-        except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
-            # These are logged in proto for now
-            pass
+    def work(self):
+        if self.handler:
+            self.handler(self.msg)
 
-    def handle_msg(self, msg):
-        # TODO handle msg
-        # self.obc.droid.set_photo_index(sentence.photo_index)
-        if not isinstance(msg, (proto.StartPhotoDataMsg, proto.StopPhotoDataMsg,
-                            proto.SendTextMsg, proto.AddPhoneNumberMsg)):
-            return
+        self.log.message(self.msg)
 
-        self.log.message(msg)
-
-    def radio_loop(self):
-        self.running = True
-        while self.running:
-            gevent.socket.wait_read(self.serial.fileno())
-            self.next_msg(self.serial)
-
+TCP_PORT = 9910
 class TCPRadio(Radio):
-    def shutdown(self):
-        super(TCPRadio, self).shutdown()
+    socket = None
+    def __init__(self, host=None, socket=None, *args, **kwargs):
+        super(TCPRadio, self).__init__(*args, **kwargs)
+        self.host = host
+        self.socket = socket
+        if not socket and host:
+            self.log.info('Connecting to %s' % self.host)
+            self.socket = gevent.socket.socket(gevent.socket.AF_INET, gevent.socket.SOCK_STREAM)
+            self.socket.connect((self.host, TCP_PORT))
+
+        self.file = self.socket.makefile()
+
+    def started(self):
+        pass
+
+    def stopped(self):
         if self.socket:
             self.socket.close()
-        self.server.stop()
-
-    def setup_radio(self):
-        self.server = StreamServer(('0.0.0.0', 12345), self.connection)
-        self.socket = None
+            self.socket = None
+        self.file = None
 
     def write(self, str):
         if not self.socket:
             return
 
         try:
-            self.socket.send(str)
-        except socket.error, e:
+            self.socket.sendall(str)
+        except (IOError, socket.timeout, socket.error), e:
+            self.log.exception('Error sending')
             self.socket = None
 
-    def connection(self, socket, addr):
-        self.socket = socket
-        f = socket.makefile()
-        while self.running:
-            self.next_msg(f)
+class TCPServerRadio(gevent.Greenlet):
+    def __init__(self, handler=None):
+        super(TCPServerRadio, self).__init__()
+        self.log = logging.getLogger('tcpserverradio')
+        self.handler = handler
+        self.server = StreamServer(('0.0.0.0', TCP_PORT), self.connection)
+        self.worker = None
+        self.link(self.stopped)
 
-    def radio_loop(self):
+    def _run(self):
         self.server.serve_forever()
+
+    def stopped(self, source):
+        if self.server:
+            self.server.stop()
+            self.server = None
+        if self.worker:
+            self.worker.stop()
+            self.worker = None
+
+    def connection(self, socket, addr):
+        self.log.info('Connection from %s:%d', *addr)
+        if self.worker:
+            self.worker.stop()
+
+        self.worker = TCPRadio(socket=socket, handler=self.handler)
+        self.worker.start()
+
+    def write(self, str):
+        if not self.worker:
+            return
+
+        self.worker.write(str)

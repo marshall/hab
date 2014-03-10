@@ -4,18 +4,19 @@ import time
 
 import gevent
 import ssd1306
+import worker
 
-class Screen(object):
+class Screen(worker.Worker):
     bus        = 1
     device     = 0
     reset_pin  = 'P9_13'
     dc_pin     = 'P9_15'
 
-    update_interval = 1.0
+    worker_interval = 1.0
     switch_interval = 5.0
 
     def __init__(self, obc):
-        self.logger = logging.getLogger('screen')
+        super(Screen, self).__init__()
         self.obc = obc
         self.panel = 0
         self.oled = ssd1306.SSD1306(bus=self.bus, device=self.device,
@@ -26,10 +27,15 @@ class Screen(object):
         self.height = self.oled.rows
         self.font_width = self.oled.font.cols
         self.font_height = self.oled.font.rows
+        self.switcher = None
 
+    def started(self):
         self.oled.begin()
-        obc.start_timers((self.update_interval, self.update),
-                         (self.switch_interval, self.next_active_panel))
+        self.switcher = worker.spawn(self.next_active_panel, interval=self.switch_interval)
+
+    def stopped(self):
+        if self.switcher:
+            self.switcher.stop()
 
     def yn(self, val):
         return 'Y' if val else 'N'
@@ -74,7 +80,7 @@ class Screen(object):
                     ext_temp=self.obc.ds18b20.fahrenheit(),
                     now=datetime.datetime.now())
 
-    def update(self):
+    def work(self):
         template_args = self.build_template_args()
 
         self.oled.clear_display()
@@ -143,7 +149,7 @@ class Panel(object):
             self.data_y += self.text_height(size=size)
 
 class MainPanel(Panel):
-    header = '{now:%m/%d %H:%M} {obc.uptime_hr:02d}h{obc.uptime_min:02d}m{obc.uptime_sec:02d}s'
+    header = '{now:%m/%d %H:%M} {obc.uptime.hours:02d}h{obc.uptime.minutes:02d}m{obc.uptime.seconds:02d}s'
     lines = ('AND:{droid.connected:d} RDO:F GPS:{gps.quality}',
              'TMP:{int_temp:+02.2f}F LAT:{gps.latitude:+02.1f}',
              'LNG:{gps.longitude:+02.1f} ALT:{gps.altitude:+02.1f}K')
@@ -156,7 +162,7 @@ class SysPanel(Panel):
     lines = ('{int_temp:+0.0f}F {int_humidity:0.0f}%',
              'CPU {sys.cpu_usage:02.1f}%',
              'MEM {sys.free_mem_mb:0.0f}MB free',
-             'UP  {obc.uptime_hr:02d}h {obc.uptime_min:02d}m {obc.uptime_sec:02d}s')
+             'UP  {obc.uptime.hours:02d}h {obc.uptime.minutes:02d}m {obc.uptime.seconds:02d}s')
 
     def draw(self):
         self.draw_title('SYS')

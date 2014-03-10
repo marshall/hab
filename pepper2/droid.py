@@ -5,14 +5,17 @@ import time
 
 import bluetooth
 import gevent
+import gevent.queue
 from pynmea import nmea, utils
 
 import hab_utils
+import log as p2_log
 import proto
+import worker
 
-log = logging.getLogger('droid')
+log = p2_log.Pepper2Logger('droid')
 
-class DroidBluetooth(gevent.Greenlet):
+class DroidBluetooth(object):
     daemon            = True
     bt_addr           = '0C:DF:A4:B1:D7:7A'
     service_uuid      = 'de746609-6dbf-4917-9040-40d1d2ce9c79'
@@ -23,14 +26,24 @@ class DroidBluetooth(gevent.Greenlet):
         super(DroidBluetooth, self).__init__()
         self.droid = droid
         self.buffer = []
-        self.reader = proto.MsgReader()
+        self.jobs = []
         self.connected = False
         self.socket = None
         self.running = False
+        self.write_queue = gevent.queue.Queue()
+
+    def start(self):
+        self.running = True
+        self.jobs = [gevent.spawn(lambda: self.loop(self.reader)),
+                     gevent.spawn(lambda: self.loop(self.writer))]
 
     def stop(self):
         self.running = False
-        self.kill()
+        for job in self.jobs:
+            job.kill()
+
+    def send_message(self, msg):
+        self.write_queue.put(msg)
 
     def ensure_connected(self):
         if self.connected and self.socket:
@@ -48,7 +61,6 @@ class DroidBluetooth(gevent.Greenlet):
             log.info('Connecting to %s port %s..', *self.bt_host_port)
             self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
             self.socket.connect(self.bt_host_port)
-            #self.socket.setblocking(0)
             self.socket_file = self.socket.makefile()
             self.connected = True
         except (socket.error, bluetooth.BluetoothError) as e:
@@ -58,38 +70,43 @@ class DroidBluetooth(gevent.Greenlet):
 
         return self.connected
 
-    def loop(self):
-        if not self.ensure_connected():
-            log.warn('Failed to connect, will try again in %d seconds',
-                     self.reconnect_timeout)
-            gevent.sleep(self.reconnect_timeout)
-            return
-
-        lost_connection = False
+    def reader(self):
         try:
             gevent.socket.wait_read(self.socket.fileno())
             msg = proto.MsgReader().read(self.socket_file)
             if not msg:
-                lost_connection = True
-        except (IOError, socket.timeout, socket.error) as e:
-            lost_connection = True
+                return False
         except (proto.BadMarker, proto.BadChecksum, proto.BadMsgType) as e:
-            # these are "ok" -- logged upstream
-            return
-
-        if lost_connection:
-            log.warn('Bluetooth connection lost, will attempt to reconnect')
-            self.connected = False
-            self.socket = self.socket_file = None
-            self.reader.reset()
-            return
+            # these are logged upstream
+            return False
 
         self.droid.handle_message(msg)
+        return True
 
-    def _run(self):
-        self.running = True
+    def writer(self):
+        msg = self.write_queue.get()
+        gevent.socket.wait_write(self.socket.fileno())
+        self.socket.sendall(msg)
+        return True
+
+    def loop(self, worker):
         while self.running:
-            self.loop()
+            if not self.ensure_connected():
+                log.warn('Failed to connect, will try again in %d seconds',
+                         self.reconnect_timeout)
+                gevent.sleep(self.reconnect_timeout)
+                continue
+
+            lost_connection = False
+            try:
+                lost_connection = not worker()
+            except (IOError, socket.timeout, socket.error) as e:
+                lost_connection = True
+
+            if lost_connection:
+                log.warn('Bluetooth connection lost, will attempt to reconnect')
+                self.connected = False
+                self.socket = self.socket_file = None
 
 class Droid(object):
     disconnected_msgs = [proto.DroidTelemetryMsg.from_data()]
@@ -107,10 +124,15 @@ class Droid(object):
         self.droid_telemetry = None
         self.photo_data = []
         self.droid_bt = DroidBluetooth(self)
+
+    def start(self):
         self.droid_bt.start()
 
-    def shutdown(self):
+    def stop(self):
         self.droid_bt.stop()
+
+    def send_message(self, msg):
+        self.droid_bt.send_message(msg)
 
     def handle_message(self, msg):
         handler = self.handlers.get(msg.msg_type)
@@ -128,7 +150,6 @@ class Droid(object):
         log.message(msg)
 
     def handle_photo_data(self, msg):
-        '''self.photo_data.append(msg)'''
         self.obc.send_message(msg, src='droid')
 
     @property
@@ -144,9 +165,5 @@ class Droid(object):
         if self.droid_telemetry:
             t.append(self.droid_telemetry)
             self.droid_telemetry = None
-
-        '''if len(self.photo_data) > 0:
-            t.extend(self.photo_data)
-            self.photo_data = []'''
 
         return t

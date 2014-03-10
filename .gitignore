@@ -2,3 +2,4 @@
 .waf-*
 build
 *.pyc
+nohup.out
