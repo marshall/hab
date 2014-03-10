@@ -43,9 +43,11 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private static final boolean DBG = false;
 
     private static final int TWO_MINUTES = 1000 * 60 * 2;
+    private static final int FIVE_MINUTES = 1000 * 60 * 5;
     private static final int TELEMETRY_INTERVAL = 5 * 1000;
     private static final int PHOTO_INTERVAL = 1000 * 30;
     private static final int PHOTO_CHUNK_INTERVAL = 1000;
+    private static final int PHOTO_SKIP = FIVE_MINUTES / PHOTO_INTERVAL; // only stream one photo every 5 minutes
     private static final int PHOTO_CHUNK_SIZE = ProtoMessage.MAX_DATA_LEN;
     private static final int MAX_PHOTOS = 255;
     private static final int SMS_ALERT_INTERVAL = 1000 * 15; // TODO make this like 10 minutes
@@ -86,6 +88,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private DroidTelemetry mTelemetry = new DroidTelemetry();
     private PhotoData mPhotoData = new PhotoData();
     private int mPhotoCount = 0;
+    private long mPhotoDataStart = 0;
     private boolean mSendingChunks = false;
     private File mPhotoFile;
     private StringBuilder[] mSmsMessages = new StringBuilder[SMS_MSG_COUNT];
@@ -184,6 +187,13 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private void sendPhotoChunk() {
         if (mPhotoCount == 0) {
             return;
+        }
+
+        if (System.currentTimeMillis() - mPhotoDataStart >= PHOTO_INTERVAL * PHOTO_SKIP) {
+            mPhotoData.index = Math.min(mPhotoCount, mPhotoData.index + PHOTO_SKIP);
+            mPhotoFile = null;
+            mPhotoDataStart = System.currentTimeMillis();
+            Log.i(TAG, "Skipping ahead to photo " + mPhotoData.index);
         }
 
         if (mPhotoFile == null) {
@@ -321,6 +331,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 mPhotoData.index = msg.arg1;
                 if (!mSendingChunks) {
                     mSendingChunks = true;
+                    mPhotoDataStart = System.currentTimeMillis();
                     sendEmptyMessageDelayed(MSG_SEND_PHOTO_CHUNK, PHOTO_CHUNK_INTERVAL);
                 }
                 break;
