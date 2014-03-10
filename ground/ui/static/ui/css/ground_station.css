@@ -2,14 +2,14 @@
   font-family: 'Open Sans';
   font-style: normal;
   font-weight: normal;
-  src: url(/fonts/OpenSans-Regular.ttf);
+  src: url(/static/ui/fonts/OpenSans-Regular.ttf);
 }
 
 @font-face {
   font-family: 'Open Sans';
   font-style: normal;
   font-weight: bold;
-  src: url(/fonts/OpenSans-Bold.ttf);
+  src: url(/static/ui/fonts/OpenSans-Bold.ttf);
 }
 
 body {
@@ -22,6 +22,10 @@ body {
 
 td {
     font-size: 0.9em;
+}
+
+.ui-loader {
+  display: none;
 }
 
 #hab-info, #map {
@@ -67,13 +71,6 @@ td {
     height: 30em;
 }
 
-/*#hab-info {
-    padding: 0em;
-    z-index: 100;
-    position: absolute;
-    margin: 0.5em 0 0 0.5em;
-}*/
-
 .panel-heading {
     padding: 0.2em;
 }
@@ -87,6 +84,72 @@ td {
     padding: 0.1em;
 }
 
+.panel-right {
+  float: right;
+  vertical-align: bottom;
+  font-size: 0.85em;
+}
+
+.panel-right a {
+  color: white;
+}
+
+.panel-right a:hover {
+  color: white;
+}
+
+.marker {
+  text-align: center;
+}
+
+.marker img {
+}
+
+.marker-balloon {
+  z-index: 100;
+}
+
+.marker-chaser {
+  z-index: 1;
+}
+
+.marker-title {
+  padding: 0.5em;
+  border-radius: 10px;
+  -webkit-border-radius: 10px;
+  -moz-border-radius: 10px;
+  font-size: 1.2em;
+  font-weight: bold;
+  background-color: white;
+  opacity: 0.9;
+  display: block;
+}
+
+.marker-balloon .marker-title {
+  border: 3px solid #428aca;
+}
+
+.marker-chaser .marker-title {
+  border: 3px solid #a754f5;
+}
+
+.marker-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.marker-chaser .marker-car-1 {
+  content: url('/static/ui/img/car-icon-1.png');
+}
+
+.marker-chaser .marker-car-2 {
+  content: url('/static/ui/img/car-icon-2.png');
+}
+
+.marker-chaser .marker-car-3 {
+  content: url('/static/ui/img/car-icon-3.png');
+}
+
 @media (max-width: 767px) and (orientation: landscape) {
     .landscape-xs-hidden {
         display: none;
@@ -96,6 +159,10 @@ td {
 @media (max-width: 767px) {
     .panel-heading h4 {
         font-size: 1em;
+    }
+
+    .panel-right {
+      font-size: 1em;
     }
 
     .data-label .label {

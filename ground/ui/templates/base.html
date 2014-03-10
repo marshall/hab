@@ -1,0 +1,25 @@
+{% load i18n %}
+{% load bootstrap3 %}
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>{% block title %}PEPPER-2 ground station{% endblock %}</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    {% bootstrap_css %}
+    <link href="/static/ui/css/ground_station.css" rel="stylesheet" media="screen">
+    {% block head_scripts %}
+    {% endblock %}
+  </head>
+
+  <body>
+    {% block content %}{% endblock %}
+
+    <script src="/static/ui/js/jquery-2.1.0.min.js"></script>
+    <script src="/static/ui/js/bootstrap.min.js"></script>
+    {% block body_scripts %}
+    {% endblock %}
+  </body>
+</html>

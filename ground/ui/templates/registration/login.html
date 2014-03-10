@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% load bootstrap3 %}
+
+<form method="post" action=".">
+
+{% block content %}
+
+{% bootstrap_messages %}
+<form class="form-horizontal" method="post" role="form">
+  {% csrf_token %}
+  {% bootstrap_form form %}
+
+  {% buttons %}
+      <button type="submit" class="btn btn-primary">{% trans 'Log in' %}</button>
+  {% endbuttons %}
+
+  <input type="hidden" name="next" value="{{ next }}" />
+</form>
+
+{% endblock %}

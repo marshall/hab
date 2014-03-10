@@ -1,53 +1,19 @@
-var map = null;
-function initMap() {
-    var mapOptions = {
-        zoom: 15,
-        streetViewControl: false,
-        panControl: true,
-        panControlOptions: {
-            position: google.maps.ControlPosition.TOP_RIGHT
-        },
-        zoomControl: true,
-        zoomControlOptions: {
-            style: google.maps.ZoomControlStyle.LARGE,
-            position: google.maps.ControlPosition.TOP_RIGHT
-        },
-        center: new google.maps.LatLng(-34.397, 150.644),
-    };
-
-    var mapEl = document.getElementById('map')
-    map = new google.maps.Map(mapEl, mapOptions);
-}
-
-var columnClasses = '';
-for (var i = 2; i <= 12; i+= 2) {
-    columnClasses += 'col-xs-' + i + ' ';
-    columnClasses += 'col-sm-' + i + ' ';
-    columnClasses += 'col-md-' + i + ' ';
-    columnClasses += 'col-lg-' + i + ' ';
-}
-
 function onOrientationChange(event) {
-    console.log('new orientation:', event.orientation);
-    var els = $('#hab-info, #map, #hab-info-thumbnail, #hab-info-data');
+    var els = $('#hab-info, #hab-info-thumbnail, #hab-info-data');
     els.removeClass();
     $('#hab-info-thumbnail,#hab-info-data').addClass('tiny-padding')
 
     if (event.orientation === 'portrait') {
-        $('#hab-info, #map').addClass('col-xs-12');
+        $('#hab-info').addClass('col-xs-12');
         $('#hab-info-thumbnail, #hab-info-data').addClass('col-xs-6');
     } else {
         $('#hab-info').addClass('col-xs-4 col-md-3');
-        $('#map').addClass('col-xs-8 col-md-9');
         $('#hab-info-thumbnail, #hab-info-data').addClass('col-xs-12');
     }
-
-    $('#map').css('height', $(window).height());
 }
 
 function DOMMapper() {
     this.elements = {};
-    this.marker = null;
 }
 
 function durationMapper(id) {
@@ -73,6 +39,7 @@ DOMMapper.prototype = {
         droid_longitude: latLongFmt
     },
 
+    accelStates: ['LEVEL', 'RISING', 'FALLING'],
 
     mappers: {
         root: function(data) {
@@ -80,7 +47,6 @@ DOMMapper.prototype = {
             this.togglePanelSuccessError('droid_', droidConnected);
             this.togglePanelSuccessError('location_', !!data.location);
             this.togglePanelSuccessError('system_', !!data.uptime);
-            this.markLocation(data);
         },
 
         uptime: durationMapper('uptime'),
@@ -107,12 +73,11 @@ DOMMapper.prototype = {
 
         droid: function(droid) {
             this.mapData(droid, 'droid_');
-            if (this.marker) {
-            }
         },
 
         droid_accel_state: function(accel_state) {
-            this.element('droid_accel_state').text(sprintf('%8s', accel_state.toUpperCase()));
+            var state = this.accelStates[accel_state];
+            this.element('droid_accel_state').text(sprintf('%8s', state));
         },
 
         droid_accel_duration: durationMapper('droid_accel_duration'),
@@ -159,6 +124,13 @@ DOMMapper.prototype = {
         }
     },
 
+    element: function(id) {
+        if (!this.elements[id]) {
+            this.elements[id] = $('#' + id);
+        }
+        return this.elements[id];
+    },
+
     togglePanelSuccessError: function(prefix, success) {
         this.element(prefix + 'panel').
             toggleClass('panel-success', success).
@@ -173,50 +145,6 @@ DOMMapper.prototype = {
         this.element(prefix + 'panel').
             toggleClass('panel-success', success).
             toggleClass('panel-info', !success);
-    },
-
-    markLocation: function(data) {
-        if (!map) {
-            return;
-        }
-
-        var lat = 0, lng = 0;
-        if (data.location) {
-            lat = data.location.latitude;
-            lng = data.location.longitude;
-        }
-
-        if (lat == 0 || lng == 0) {
-            if (!data.droid) {
-                return;
-            }
-
-            lat = data.droid.latitude;
-            lng = data.droid.longitude;
-        }
-
-        if (lat == 0 || lng == 0) {
-            return;
-        }
-
-        if (!this.marker) {
-            this.marker = new google.maps.Marker({
-                title: 'PEPPER-2',
-                icon: 'img/hab-icon.png',
-                map: map
-            });
-        }
-
-        var latlng = new google.maps.LatLng(lat, lng);
-        map.panTo(latlng);
-        this.marker.setPosition(latlng);
-    },
-
-    element: function(id) {
-        if (!(id in this.elements)) {
-            this.elements[id] = $('#' + id);
-        }
-        return this.elements[id];
     },
 
     mapData: function(data, prefix) {
@@ -242,16 +170,49 @@ DOMMapper.prototype = {
     },
 }
 
+function getPagedJSON(url, handler) {
+    var progress = 0;
+    function pageHandler(data) {
+
+        var results = data.results === undefined ? data : data.results;
+        var totalCount = data.count === undefined ? 1 : data.count;
+        var pageCount = data.results === undefined ? 1 : data.results.length;
+        progress += pageCount;
+
+        var handleResult = handler(results, progress, totalCount);
+
+        if (handleResult !== false && data.next !== undefined) {
+            $.getJSON(data.next).done(pageHandler);
+        }
+    }
+
+    $.getJSON(url).done(pageHandler);
+}
+
 $(document).ready(function($) {
-    var script = document.createElement('script');
-    script.type = 'text/javascript';
-    script.src = 'https://maps.googleapis.com/maps/api/js?v=3.exp&sensor=false&callback=initMap';
-    document.body.appendChild(script);
+    $.mobile.linkBindingEnabled = false;
+    function csrfSafeMethod(method) {
+        // these HTTP methods do not require CSRF protection
+        return (/^(GET|HEAD|OPTIONS|TRACE)$/.test(method));
+    }
+
+    var csrftoken = $.cookie('csrftoken');
+    $.ajaxSetup({
+        crossDomain: false, // obviates need for sameOrigin test
+        beforeSend: function(xhr, settings) {
+            if (!csrfSafeMethod(settings.type)) {
+                xhr.setRequestHeader("X-CSRFToken", csrftoken);
+            }
+        }
+    });
+
+    var STATS_INTERVAL = 5000;
+    var PHOTO_INTERVAL = 60000;
 
     var mapper = new DOMMapper();
     mapper.mapData({});
 
-    var updateTimer;
+    var statsTimer, photoTimer;
     var mockData = new MockData();
 
     function handleData(data) {
@@ -263,13 +224,34 @@ $(document).ready(function($) {
         mapper.mapData(data);
     }
 
-    function updateData() {
-        $.getJSON('/api').done(handleData);
+    function handlePhotos(photo) {
+        if (photo.latest) {
+            $('#droid_camera').attr('src', photo.latest);
+        }
+
+        if (photo.next_progress) {
+            console.log(photo.next_progress + '%')
+        }
+    }
+
+    function updateStats() {
+        $.getJSON('/api/stats/').done(handleData);
+        statsTimer = setTimeout(updateStats, STATS_INTERVAL);
+    }
+
+    function updatePhoto() {
+        $.getJSON('/api/photos/latest/').done(handlePhotos);
+        photoTimer = setTimeout(updatePhoto, PHOTO_INTERVAL);
     }
 
     hideAddressbar('#main')
 
     $(window).on('orientationchange', onOrientationChange);
-    $(window).orientationchange();
-    updateTimer = setInterval(updateData, 1000);
+
+    setTimeout(function() {
+        $(window).orientationchange();
+    }, 0);
+
+    updateStats();
+    updatePhoto();
 });

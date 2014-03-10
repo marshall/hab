@@ -1,0 +1,45 @@
+{% extends 'base.html' %}
+
+{% block head_scripts %}
+<script type="text/javascript"
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDPx0Jg9xOICAqUng2O9JxR-NKng5eG8ig&sensor=true">
+</script>
+{% endblock %}
+
+{% block content %}
+  <div id="main" class="container-fluid">
+    <div class="row">
+      <div id="hab-info">
+        {% include 'hab_info.html' %}
+      </div>
+      <div id="map">
+      </div>
+    </div>
+  </div>
+
+  <div style="display:none;">
+    <!-- these are loaded into markers -->
+    <div class="marker marker-balloon">
+      <span class="marker-title">PEPPER-2</span>
+      <img src="/static/ui/img/hab-icon.png">
+    </div>
+
+    <div class="marker marker-chaser">
+      <span class="marker-title">CHASER</span>
+      <img src="/static/ui/img/car-icon-1.png">
+    </div>
+  </div>
+{% endblock %}
+
+{% block body_scripts %}
+  <script src="/static/ui/js/jquery.mobile-1.4.1.min.js"></script>
+  <script src="/static/ui/js/jquery.cookie.js"></script>
+  <script src="/static/ui/js/sprintf.min.js"></script>
+  <script src="/static/ui/js/holder.min.js"></script>
+  <script src="/static/ui/js/hideAddressbar.min.js"></script>
+  <script src="/static/ui/js/richmarker-compiled.js"></script>
+
+  <script src="/static/ui/js/mock_data.js"></script>
+  <script src="/static/ui/js/ground_station.js"></script>
+  <script src="/static/ui/js/map.js"></script>
+{% endblock %}

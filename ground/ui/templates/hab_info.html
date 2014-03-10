@@ -1,0 +1,43 @@
+<div class="panel panel-primary">
+  <div class="panel-heading">
+    <h4>
+      <span class="glyphicon glyphicon-map-marker"></span>
+      PEPPER-2
+      {% if user.is_authenticated %}
+      <p class="panel-right">[{{ user.username }}]</p>
+      <script type="text/javascript">var AUTHENTICATED = true;</script>
+      {% else %}
+      <p class="panel-right"><a data-ajax="false" href="{% url 'django.contrib.auth.views.login' %}?next=/">Login</a></p>
+      <script type="text/javascript">var AUTHENTICATED = false;</script>
+      {% endif %}
+    </h4>
+  </div> <!-- panel-heading -->
+
+  <div class="panel-body">
+    <div class="row">
+
+      <div id="hab-info-thumbnail" class="tiny-padding">
+        <a href="#" class="thumbnail">
+            <img data-src="holder.js/256x192/sky/auto/text:PEPPER-2 Android Camera" alt="PEPPER-2 droid camera" id="droid_camera">
+        </a>
+      </div> <!-- hab-info-thumbnail -->
+
+      <div id="hab-info-data" class="tiny-padding">
+        {% include 'data_column.html' with id='location_latitude' label='LATITUDE' classes='col-xs-hidden' %}
+        {% include 'data_column.html' with id='location_longitude' label='LONGITUDE' classes='col-xs-hidden' %}
+        {% include 'data_column.html' with id='location_altitude' label='ALTITUDE' %}
+        {% include 'data_column.html' with id='cpu_usage' label='CPU USAGE' classes='col-xs-hidden' %}
+        {% include 'data_column.html' with id='free_mem' label='MEM FREE' classes='col-xs-hidden' %}
+        {% include 'data_column.html' with id='uptime' label='UPTIME' %}
+        {% include 'data_column.html' with id='int_temperature' label='INT TEMP' %}
+        {% include 'data_column.html' with id='int_humidity' label='INT HUMID' classes='landscape-xs-hidden' %}
+        {% include 'data_column.html' with id='ext_temperature' label='EXT TEMP' %}
+        {% include 'data_column.html' with id='droid_battery' label='BATTERY' classes='landscape-xs-hidden' glyph='phone' %}
+        {% include 'data_column.html' with id='droid_radio' label='CELL RADIO' classes='col-xs-hidden' glyph='phone' %}
+        {% include 'data_column.html' with id='droid_photo_count' label='PHOTOS' classes='col-xs-hidden' glyph='phone' %}
+        {% include 'data_column.html' with id='droid_accel_state' label='ACCEL' classes='col-xs-hidden' glyph='phone' %}
+        {% include 'data_column.html' with id='droid_accel_duration' label='ACCEL DUR' classes='col-xs-hidden' glyph='phone' %}
+      </div> <!-- hab-info-data -->
+    </div> <!-- row -->
+  </div> <!-- panel-body -->
+</div> <!-- panel -->

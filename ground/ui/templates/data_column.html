@@ -1,0 +1,10 @@
+<div class="{{ classes|default:'cols-xs-5' }} col-md-4">
+    <span class="data" id="{{ id }}">?</span>
+    <div class="data-label">
+        <span class="label label-default">
+            {% if glyph %}
+            <span class="glyphicon glyphicon-{{ glyph }}"></span>
+            {% endif %} {{ label }}
+        </span>
+    </div>
+</div>
