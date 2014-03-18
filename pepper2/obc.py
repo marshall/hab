@@ -54,7 +54,14 @@ class Uptime(worker.Worker):
                     seconds=self.seconds)
 
     def work(self):
-        self.total = time.time() - self.begin
+        # account for time update
+        new_total = time.time() - self.begin
+        if new_total / 3600 > 12000:
+            self.begin = time.time() - self.total
+            self.total = time.time() - self.begin
+        else:
+            self.total = new_total
+
         self.hours = int(self.total / 3600)
         hrSecs = self.hours * 3600
         self.minutes = int((self.total - hrSecs) / 60)

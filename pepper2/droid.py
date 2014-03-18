@@ -9,11 +9,8 @@ import gevent.queue
 from pynmea import nmea, utils
 
 import hab_utils
-import log as p2_log
 import proto
 import worker
-
-log = p2_log.Pepper2Logger('droid')
 
 class DroidBluetooth(object):
     daemon            = True
@@ -24,6 +21,7 @@ class DroidBluetooth(object):
 
     def __init__(self, droid):
         super(DroidBluetooth, self).__init__()
+        self.log = logging.getLogger('droid')
         self.droid = droid
         self.buffer = []
         self.jobs = []
@@ -52,13 +50,13 @@ class DroidBluetooth(object):
         matches = bluetooth.find_service(uuid=self.service_uuid,
                                          address=self.bt_addr)
         if len(matches) == 0:
-            log.warn("Couldn't find Android bluetooth server")
+            self.log.warn("Couldn't find Android bluetooth server")
             return False
 
         match = matches[0]
         self.bt_host_port = (match['host'], match['port'])
         try:
-            log.info('Connecting to %s port %s..', *self.bt_host_port)
+            self.log.info('Connecting to %s port %s..', *self.bt_host_port)
             self.socket = bluetooth.BluetoothSocket(bluetooth.RFCOMM)
             self.socket.connect(self.bt_host_port)
             self.socket_file = self.socket.makefile()
@@ -92,8 +90,8 @@ class DroidBluetooth(object):
     def loop(self, worker):
         while self.running:
             if not self.ensure_connected():
-                log.warn('Failed to connect, will try again in %d seconds',
-                         self.reconnect_timeout)
+                self.log.warn('Failed to connect, will try again in %d seconds',
+                              self.reconnect_timeout)
                 gevent.sleep(self.reconnect_timeout)
                 continue
 
@@ -104,7 +102,7 @@ class DroidBluetooth(object):
                 lost_connection = True
 
             if lost_connection:
-                log.warn('Bluetooth connection lost, will attempt to reconnect')
+                self.log.warn('Bluetooth connection lost, will attempt to reconnect')
                 self.connected = False
                 self.socket = self.socket_file = None
 
@@ -118,7 +116,9 @@ class Droid(object):
             proto.PhotoDataMsg.TYPE     : self.handle_photo_data
         }
 
+        self.log = logging.getLogger('droid')
         self.battery = self.radio = self.photo_count = 0
+        self.radio_dbm = self.radio_bars = 0
         self.accel_state = self.accel_duration = 0
         self.latitude = self.longitude = 0
         self.droid_telemetry = None
@@ -137,7 +137,7 @@ class Droid(object):
     def handle_message(self, msg):
         handler = self.handlers.get(msg.msg_type)
         if not handler:
-            log.error('Unknown Droid message type: %d', msg_type)
+            self.log.error('Unknown Droid message type: %d', msg_type)
             return
 
         handler(msg)
@@ -147,9 +147,12 @@ class Droid(object):
             setattr(self, name, getattr(msg, name))
 
         self.droid_telemetry = msg
-        log.message(msg)
+        self.log.message(msg)
 
     def handle_photo_data(self, msg):
+        #self.log.info('index=%d, chunk=%d, chunk_count=%d, file_size=%d',
+        #              msg.index, msg.chunk, msg.chunk_count, msg.file_size)
+
         self.obc.send_message(msg, src='droid')
 
     @property

@@ -4,6 +4,7 @@ import traceback
 import gevent
 import gevent.event
 import gevent.socket
+import serial
 
 import proto
 
@@ -109,11 +110,21 @@ class FileWorkerBase(Worker):
 
     def wait_read(self):
         self._set_event.wait()
-        gevent.socket.wait_read(self._file.fileno())
+        while True:
+            try:
+                gevent.socket.wait_read(self._file.fileno())
+                break
+            except serial.SerialException:
+                continue
 
     def wait_write(self):
         self._set_event.wait()
-        gevent.socket.wait_write(self._file.fileno())
+        while True:
+            try:
+                gevent.socket.wait_write(self._file.fileno())
+                break
+            except serial.SerialException:
+                continue
 
     def read(self, size=-1):
         self.wait_read()
@@ -137,9 +148,12 @@ class FileReadLineWorker(FileReadWorker):
     line = None
 
     def do_work(self):
-        self.line = self._file.readline()
-        if self.line:
-            self.work()
+        try:
+            self.line = self._file.readline()
+            if self.line:
+                self.work()
+        except serial.SerialException:
+            pass
 
 class ProtoMsgWorker(FileReadWorker):
     msg = None

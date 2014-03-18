@@ -9,7 +9,7 @@ PEPPER-2 On Board Computer
 * Adafruit Ultimate GPS Breakout v3
 * Virtuabotix DHT22 Temp & Humidity module (internal)
 * DS18B20 temperature sensor (external)
-
+* Push button
 ## Wiring
 
 <table>
@@ -25,6 +25,7 @@ PEPPER-2 On Board Computer
     <tr><td>SSD1306</td><td>DATA</td><td>P9_18 - SPI0_D1</td></tr>
     <tr><td>DHT22</td><td>DTA</td><td>P8_17</td></tr>
     <tr><td>DS18B20</td><td>DTA</td><td>P9_28</td></tr>
+    <tr><td>Push button</td><td></td><td>P8_12</td></tr>
 </table>
 
 ## Voltage
@@ -36,4 +37,5 @@ PEPPER-2 On Board Computer
     <tr><td>SSD1306</td><td>3.3v</td></tr>
     <tr><td>Adafruit GPS</td><td>3.3v</td></tr>
     <tr><td>Xtend900</td><td>5v - VDD_5V / P9_5</td></tr>
+    <tr><td>Push button</td><td>3.3v (grounded w/ 1Kohm resistor)</td></tr>
 </table>

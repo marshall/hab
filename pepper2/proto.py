@@ -241,10 +241,10 @@ class DroidTelemetryMsg(Msg):
     accel_rising  = 1
     accel_falling = 2
 
-    data_struct = struct.Struct('!BBBHHdd')
-    data_attrs  = (('battery', 0), ('radio', 0), ('accel_state', 0),
-                   ('accel_duration', 0), ('photo_count', 0), ('latitude', 0),
-                   ('longitude', 0))
+    data_struct = struct.Struct('!BbBBHHdd')
+    data_attrs  = (('battery', 0), ('radio_dbm', 0), ('radio_bars', 0),
+                   ('accel_state', 0), ('accel_duration', 0),
+                   ('photo_count', 0), ('latitude', 0), ('longitude', 0))
 
 @msg_type(3)
 class PhotoDataMsg(Msg):
