@@ -59,6 +59,10 @@ td {
     font-size: 0.85em;
 }
 
+#photo-progress {
+  margin-bottom: 0.1em;
+}
+
 .progress-bar-incomplete {
     background-color: #ffefef;
 }

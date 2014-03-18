@@ -73,6 +73,7 @@ DOMMapper.prototype = {
 
         droid: function(droid) {
             this.mapData(droid, 'droid_');
+            this.element('droid_radio').text(sprintf('%d dBm / %d%%', droid.radio_dbm, droid.radio_bars));
         },
 
         droid_accel_state: function(accel_state) {
@@ -207,7 +208,7 @@ $(document).ready(function($) {
     });
 
     var STATS_INTERVAL = 5000;
-    var PHOTO_INTERVAL = 60000;
+    var PHOTO_INTERVAL = 15000;
 
     var mapper = new DOMMapper();
     mapper.mapData({});
@@ -224,13 +225,26 @@ $(document).ready(function($) {
         mapper.mapData(data);
     }
 
-    function handlePhotos(photo) {
+    function handleLatestPhoto(photo) {
         if (photo.latest) {
             $('#droid_camera').attr('src', photo.latest);
         }
 
-        if (photo.next_progress) {
-            console.log(photo.next_progress + '%')
+        if (photo.next_progress !== undefined) {
+            var isActive = photo.next_progress != 100;
+            var smallText = photo.next_progress <= 10;
+
+            $('#photo-progress').toggleClass('active', isActive);
+            $('#photo-progress .progress-bar')
+                .css('width', photo.next_progress + '%')
+                .toggleClass('progress-bar-success', !isActive);
+
+            var progressText = smallText ? photo.next_progress + '%' :
+                                           'Next: ' + photo.next_progress + '%';
+
+            $('#photo-progress .progress-label')
+                .text(progressText)
+                .toggleClass('sr-only', !isActive);
         }
     }
 
@@ -239,9 +253,9 @@ $(document).ready(function($) {
         statsTimer = setTimeout(updateStats, STATS_INTERVAL);
     }
 
-    function updatePhoto() {
-        $.getJSON('/api/photos/latest/').done(handlePhotos);
-        photoTimer = setTimeout(updatePhoto, PHOTO_INTERVAL);
+    function updateLatestPhoto() {
+        $.getJSON('/api/photos/latest/').done(handleLatestPhoto);
+        photoTimer = setTimeout(updateLatestPhoto, PHOTO_INTERVAL);
     }
 
     hideAddressbar('#main')
@@ -253,5 +267,5 @@ $(document).ready(function($) {
     }, 0);
 
     updateStats();
-    updatePhoto();
+    updateLatestPhoto();
 });

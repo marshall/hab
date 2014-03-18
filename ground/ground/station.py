@@ -29,6 +29,13 @@ class GSWebClient(object):
         self.auth_token = auth_token
         self.headers={ 'Authorization': 'Token %s' % auth_token }
         self.log = logging.getLogger('gswebclient')
+        self.completed_photos = []
+
+    def complete_photo(self, index):
+        self.completed_photos.append(index)
+
+    def is_photo_complete(self, index):
+        return index in self.completed_photos
 
     def post(self, uri, **data):
         try:
@@ -73,6 +80,7 @@ class GroundStation(object):
         self.last_downloaded_photo = 0
         self.mock_job = None
         self.web_clients = []
+        self.requested_next = []
         self.jobs = []
 
         if servers and auth_tokens:
@@ -183,7 +191,7 @@ class GroundStation(object):
         self.droid_telemetry = droid_telemetry
 
         droid_stats = self.stats['droid']
-        if droid_telemetry.battery == 0 and droid_telemetry.radio == 0:
+        if droid_telemetry.battery == 0 and droid_telemetry.radio_dbm == 0:
             droid_stats.update(connected=False)
             return
 
@@ -193,18 +201,27 @@ class GroundStation(object):
     def save_photo_data(self, photo_data):
         all_posted = []
         for client in self.web_clients:
+            if client.is_photo_complete(photo_data.index):
+                continue
+
             posted = client.post('/api/photos/', index=photo_data.index,
                                                  chunks=photo_data.chunk_count,
                                                  chunk=photo_data.chunk,
                                                  data=base64.b64encode(photo_data.photo_data))
-            if posted is not None:
-                all_posted.append(posted['complete'])
+            if posted is not None and posted['complete']:
+                client.complete_photo(photo_data.index)
 
-        if all(all_posted):
-            self.start_next_photo()
+        if all((client.is_photo_complete(photo_data.index) for client in self.web_clients)):
+            self.start_next_photo(photo_data.index)
 
-    def start_next_photo(self):
-        pass
+    def start_next_photo(self, index):
+        if not self.droid_telemetry:
+            return
+
+        next_index = self.droid_telemetry.photo_count - 1
+        if index < next_index and next_index not in self.requested_next:
+            self.radio.write(proto.StartPhotoDataMsg.from_data(index=index))
+            self.requested_next.append(next_index)
 
     def handle_msg(self, msg):
         '''if self.forward_addr:

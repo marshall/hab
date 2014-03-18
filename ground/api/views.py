@@ -30,15 +30,16 @@ class PhotoDataViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(dict(result='ok', complete=complete))
 
     def latest(self, request, *args, **kwargs):
-        latest = PhotoData.objects.filter(downloading=False).last()
+        status = PhotoStatus.get_status()
         response = {}
 
-        if latest:
-            response.update(latest=latest.url)
+        if status.latest > -1:
+            latest = PhotoData.objects.filter(index=status.latest).last()
+            if latest:
+                response.update(latest=latest.url)
 
-        next_data = PhotoData.objects.filter(downloading=True).order_by('-index').last()
-        if next_data:
-            response.update(next_progress=(next_data.chunks - len(next_data.missing)) / next_data.chunks)
+        if status.next_progress > -1:
+            response.update(next_progress=status.next_progress)
 
         return Response(response)
 

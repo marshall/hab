@@ -30,6 +30,18 @@ class Stats(Model):
 
         return stats
 
+class PhotoStatus(Model):
+    latest = IntegerField(default=-1)
+    next_progress = IntegerField(default=-1)
+
+    @classmethod
+    def get_status(cls):
+        status = cls.objects.first()
+        if not status:
+            status = cls()
+
+        return status
+
 class PhotoData(Model):
     index = IntegerField()
     chunks = IntegerField()
@@ -46,6 +58,7 @@ class PhotoData(Model):
         photo = result[0] if len(result) > 0 else cls(index=index,
                                                       chunks=chunks,
                                                       missing=range(0, chunks))
+        photo.chunks = chunks
         photo.save_chunk(**chunk)
         return photo
 
@@ -77,6 +90,13 @@ class PhotoData(Model):
             self.build_photo()
 
         self.save()
+
+        status = PhotoStatus.get_status()
+        if len(self.missing) == 0:
+            status.latest = self.index
+
+        status.next_progress = int(round(100 * ((float(self.chunks) - len(self.missing)) / self.chunks)))
+        status.save()
 
     def build_photo(self):
         photo_path = os.path.join(photos_dir, '%03d.jpg' % self.index)
