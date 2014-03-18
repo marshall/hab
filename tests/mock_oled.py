@@ -46,7 +46,8 @@ class MockOLED(ssd1306.SSD1306):
     def command(self, *bytes):
         if len(bytes) >= 1:
             cmd = bytes[0]
-            if cmd & self.SET_START_LINE:
+            if cmd & self.SET_START_LINE and \
+               cmd <= (self.SET_START_LINE * 2) - 1:
                 self.top_y = cmd & ~self.SET_START_LINE
                 self.update_display()
 

@@ -189,17 +189,6 @@ class PanelTest(NonNativeTestCase):
             now=now,
         )
 
-    def test_main_panel(self):
-        panel = self.pepper2.screen.MainPanel(self.mock_screen)
-        panel.template_args = self.template_args
-        panel.do_draw(0, 0)
-
-        self.mock_screen.draw_text.assert_has_calls([
-            call(0, 0, '%s 01h01m01s' % self.now_str, invert=True),
-            call(0, 8, 'AND:1 RDO:F GPS:2'),
-            call(0, 16, 'TMP:+100.12F LAT:+33.1'),
-            call(0, 24, 'LNG:-98.3 ALT:+0.1K')])
-
     def test_sys_panel(self):
         panel = self.pepper2.screen.SysPanel(self.mock_screen)
         panel.template_args = self.template_args
@@ -228,9 +217,7 @@ class PanelBufferTest(NonNativeTestCase):
     @patch('pepper2.screen.time.sleep')
     @patch('pepper2.screen.GPSPanel')
     @patch('pepper2.screen.SysPanel')
-    @patch('pepper2.screen.MainPanel')
-    def test_switch_screen(self, MainPanel, SysPanel, GPSPanel, mock_sleep):
-        main_panel = MainPanel.return_value
+    def test_switch_screen(self, SysPanel, GPSPanel, mock_sleep):
         sys_panel = SysPanel.return_value
         gps_panel = GPSPanel.return_value
 
@@ -241,7 +228,7 @@ class PanelBufferTest(NonNativeTestCase):
         self.assertEqual(panel_buffer.active_panel, sys_panel)
         self.assertEqual(panel_buffer.inactive_panel, gps_panel)
 
-        for screen in (main_panel, sys_panel, gps_panel):
+        for screen in (sys_panel, gps_panel):
             screen.template_args = oled.build_template_args()
 
         panel_buffer.draw()
@@ -257,19 +244,6 @@ class PanelBufferTest(NonNativeTestCase):
 
         panel_buffer.draw()
         sys_panel.do_draw.assert_called_with(0, 0)
-        gps_panel.do_draw.assert_called_with(0, 32)
-
-        panel_buffer.switch_panel(main_panel)
-        self.assertEqual(panel_buffer.active_panel, main_panel)
-        self.assertEqual(panel_buffer.inactive_panel, gps_panel)
-        self.assertTrue(sys_panel not in panel_buffer.panels)
-        self.assertEqual(len(panel_buffer.panels), 2)
-
-        main_panel.do_draw.assert_called_with(0, 0)
-        oled.set_start_line.assert_has_calls([call(i) for i in range(32, -1, -1)])
-
-        panel_buffer.draw()
-        main_panel.do_draw.assert_called_with(0, 0)
         gps_panel.do_draw.assert_called_with(0, 32)
 
 if __name__ == '__main__':
