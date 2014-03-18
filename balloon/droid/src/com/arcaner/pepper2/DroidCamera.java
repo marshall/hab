@@ -51,7 +51,6 @@ public class DroidCamera extends Activity
 
     public static String getRelativeThumbPath(int index) {
         return String.format(REL_THUMB_FORMAT, index);
-
     }
 
     @Override

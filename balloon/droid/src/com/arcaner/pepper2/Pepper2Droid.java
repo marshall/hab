@@ -5,6 +5,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 import android.app.PendingIntent;
@@ -24,8 +25,8 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
-import android.telephony.CellInfo;
-import android.telephony.CellInfoGsm;
+import android.telephony.PhoneStateListener;
+import android.telephony.SignalStrength;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
 import android.util.Log;
@@ -41,16 +42,17 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
 
     private static final String TAG = "PEPPER2-DROID";
     private static final boolean DBG = false;
+    private static final boolean SEND_TXT_MESSAGES = false; // TODO CHANGE ME!!!!!
 
     private static final int TWO_MINUTES = 1000 * 60 * 2;
-    private static final int FIVE_MINUTES = 1000 * 60 * 5;
     private static final int TELEMETRY_INTERVAL = 5 * 1000;
     private static final int PHOTO_INTERVAL = 1000 * 30;
     private static final int PHOTO_CHUNK_INTERVAL = 1000;
-    private static final int PHOTO_SKIP = FIVE_MINUTES / PHOTO_INTERVAL; // only stream one photo every 5 minutes
+    private static final int PHOTO_SKIP = (TWO_MINUTES * 2) / PHOTO_INTERVAL; // only stream one photo every 4 minutes
     private static final int PHOTO_CHUNK_SIZE = ProtoMessage.MAX_DATA_LEN;
-    private static final int MAX_PHOTOS = 255;
-    private static final int SMS_ALERT_INTERVAL = 1000 * 15; // TODO make this like 10 minutes
+    private static final int MAX_PHOTOS = 768;
+    
+    private static final int SMS_ALERT_INTERVAL = 1000 * 60 * 5;
     private static final int MIN_ACCEL_STABILITY = 1000 * 10;
     private static final int ACCEL_SAMPLE_SIZE = 20;
     private static final float ACCEL_RISING  =  1.1f;
@@ -61,7 +63,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private static final int MAX_SMS_MSG_LEN = 160;
     private static final int SMS_MSG_COUNT = 2;
     private static final String GMAPS_URL = "http://maps.google.com/maps?q=";
-    private static final String SMS_PHONE_NUMBER = "+12145006076";
+    private static final String[] SMS_PHONE_NUMBERS = new String[] { "+12145006076", "+12145008098" };
 
     private static final int MSG_UPDATE_TELEMETRY   = 100;
     private static final int MSG_TAKE_PHOTO         = 101;
@@ -84,15 +86,18 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private long mAccelStateBegin = 0;
     private IntentFilter mBatteryFilter = new IntentFilter(Intent.ACTION_BATTERY_CHANGED);
     private TelephonyManager mTelephony;
-    private int mRadioLevel;
+    private int mRadioDbm, mRadioBars;
     private DroidTelemetry mTelemetry = new DroidTelemetry();
     private PhotoData mPhotoData = new PhotoData();
     private int mPhotoCount = 0;
     private long mPhotoDataStart = 0;
+    private long mTotalPhotoSize = 0, mTotalThumbSize = 0;
     private boolean mSendingChunks = false;
     private File mPhotoFile;
     private StringBuilder[] mSmsMessages = new StringBuilder[SMS_MSG_COUNT];
     private ArrayList<String> mPhoneNumbers = new ArrayList<String>();
+    private IntentFilter mSmsFilter;
+    private SmsReceiver mSmsReceiver;
 
     public Pepper2Droid(MainActivity context, BluetoothServer btServer) {
         super((ThreadGroup) null, TAG);
@@ -104,16 +109,29 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         }
         mAccelStateBegin = System.currentTimeMillis();
 
-        mPhoneNumbers.add(SMS_PHONE_NUMBER);
+        for (String phoneNumber : SMS_PHONE_NUMBERS) {
+            mPhoneNumbers.add(phoneNumber);
+        }
 
         mTelephony = (TelephonyManager) context
                 .getSystemService(Context.TELEPHONY_SERVICE);
+        mTelephony.listen(new PhoneStateListener() {
+            @Override
+            public void onSignalStrengthsChanged(SignalStrength signalStrength) {
+                updateRadio(signalStrength);
+            }
+        }, PhoneStateListener.LISTEN_SIGNAL_STRENGTHS);
 
         LocationManager locationManager = (LocationManager) context
                 .getSystemService(Context.LOCATION_SERVICE);
         mLocation = locationManager
                 .getLastKnownLocation(LocationManager.GPS_PROVIDER);
         mCriteria.setAccuracy(Criteria.ACCURACY_FINE);
+
+        mSmsReceiver = new SmsReceiver(this);
+        mSmsFilter = new IntentFilter();
+        mSmsFilter.addAction("android.provider.Telephony.SMS_RECEIVED");
+        mContext.registerReceiver(mSmsReceiver, mSmsFilter);
     }
 
     public void shutdown() {
@@ -123,6 +141,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         locationManager.removeUpdates(this);
         SensorManager sensorManager = (SensorManager) mContext.getSystemService(Context.SENSOR_SERVICE);
         sensorManager.unregisterListener(this);
+        mContext.unregisterReceiver(mSmsReceiver);
         mContext = null;
         mTelephony = null;
     }
@@ -145,14 +164,48 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         msg.sendToTarget();
     }
 
+    private void updateRadio(SignalStrength signalStrength) {
+        if (signalStrength.isGsm()) {
+            int asu = signalStrength.getGsmSignalStrength();
+            mRadioDbm = -1;
+            if (asu != 99) {
+                mRadioDbm = -113 + 2 * asu;
+            }
+
+            if (asu <= 2 || asu == 99) mRadioBars = 0;
+            else if (asu >= 12) mRadioBars = 100;
+            else {
+                mRadioBars = (int) Math.round(100 * (((double) asu - 2) / 12.0));
+            }
+        } else {
+            mRadioDbm = signalStrength.getCdmaDbm();
+            int ecio = signalStrength.getCdmaEcio();
+            int levelDbm, levelEcio;
+
+            if (mRadioDbm >= -75) levelDbm = 100;
+            else if (mRadioDbm < -100) levelDbm = 0;
+            else {
+                levelDbm = (int) Math.round(100 * (((double) mRadioDbm + 100.0) / 25.0));
+            }
+
+            // Ec/Io are in dB*10
+            if (ecio >= -90) levelEcio = 100;
+            else if (ecio < -150) levelEcio = 0;
+            else {
+                levelEcio = (int) Math.round(100 * (((double) ecio + 150.0) / 60.0));
+            }
+            mRadioBars = (levelDbm < levelEcio) ? levelDbm : levelEcio;
+        }
+    }
+
     private void updateTelemetry() {
         Intent batteryIntent = mContext.registerReceiver(null, mBatteryFilter);
         int level = batteryIntent.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
         int scale = batteryIntent.getIntExtra(BatteryManager.EXTRA_SCALE, -1);
-        updateRadioLevel();
 
         mTelemetry.battery = (short) Math.floor(100 * (level / (float) scale));
-        mTelemetry.radio = (short) mRadioLevel;
+        mTelemetry.radioDbm = (short) mRadioDbm;
+        mTelemetry.radioBars = (short) mRadioBars;
         mTelemetry.photoCount = mPhotoCount;
         mTelemetry.latitude = mLocation == null ? 0 : mLocation.getLatitude();
         mTelemetry.longitude = mLocation == null ? 0 : mLocation.getLongitude();
@@ -163,12 +216,18 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
             mSmsMessages[i].delete(0, mSmsMessages[i].length());
         }
 
+        String totalPhotoSizeMb = String.format("%.2f MB", ((double) mTotalPhotoSize) / 1024.0 / 1024.0);
         mSmsMessages[0].append("BATT: ")
                        .append(mTelemetry.battery)
-                       .append("\nRADIO: ")
-                       .append(mTelemetry.radio)
+                       .append("%\nRADIO: ")
+                       .append(mTelemetry.radioDbm)
+                       .append(" dBm / ")
+                       .append(mRadioBars)
+                       .append("%")
                        .append("\nPHOTOS: ")
                        .append(mTelemetry.photoCount)
+                       .append(" / ")
+                       .append(totalPhotoSizeMb)
                        .append("\n")
                        .append(mAccelState.toString())
                        .append(" for ")
@@ -182,6 +241,25 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                        .append(mTelemetry.longitude);
 
         mBtServer.writeMessage(mTelemetry);
+    }
+
+    private void onPhotoTaken(int photoCount, String photoPath, String thumbPath) {
+        //mPhotoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
+        mPhotoCount = photoCount;
+
+        File photoFile = new File(photoPath);
+        mTotalPhotoSize += photoFile.length();
+
+        File thumbFile = new File(thumbPath);
+        mTotalThumbSize += thumbFile.length();
+
+        if (mPhotoCount < MAX_PHOTOS) {
+            mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
+        }
+
+        if (!mSendingChunks) {
+            startPhotoData(0);
+        }
     }
 
     private void sendPhotoChunk() {
@@ -243,7 +321,55 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         }
     }
 
-    private void sendTextMessage(boolean checkLevel) {
+    private String handlePhotoCommand(String args[]) {
+        if (args.length == 1 || args[1].equalsIgnoreCase("HELP")) {
+            return "PHOTO commands: START <index>, STOP";
+        }
+
+        String command = args[1];
+        if (command.equalsIgnoreCase("START")) {
+            if (args.length == 2) {
+                return "ERR: PHOTO START requires an index";
+            }
+
+            int index = Integer.parseInt(args[2]);
+            if (index >= mPhotoCount) {
+                return "ERR: Only " + mPhotoCount + " photos";
+            }
+
+            startPhotoData(index);
+            return "START SENDING PHOTO " + index;
+        } else if (command.equalsIgnoreCase("STOP")) {
+            stopPhotoData();
+            return "STOP SENDING PHOTO";
+        }
+
+        return "Unknown PHOTO command: " + command;
+    }
+
+    public void onTextReceived(String msgBody, String srcAddr) {
+        SmsManager smsManager = SmsManager.getDefault();
+        try {
+            String tokens[] = msgBody.split(" ");
+            if (tokens.length == 0 || tokens[0].equalsIgnoreCase("HELP")) {
+                sendSingleTextMessage(smsManager, srcAddr, "Commands: PHOTO, STATS");
+                return;
+            }
+
+            String command = tokens[0];
+            if (command.equalsIgnoreCase("PHOTO")) {
+                sendSingleTextMessage(smsManager, srcAddr, handlePhotoCommand(tokens));
+            } else if (command.equalsIgnoreCase("STATS")) {
+                sendStatsTextMessage(smsManager, false, Arrays.asList(srcAddr));
+            } else {
+                sendSingleTextMessage(smsManager, srcAddr, "Unknown command: " + command);
+            }
+        } catch (Exception e) {
+            sendSingleTextMessage(smsManager, srcAddr, "Error processing: " + e.getMessage());
+        }
+    }
+
+    private void sendStatsTextMessage(SmsManager smsManager, boolean checkLevel, List<String> phoneNumbers) {
         if (checkLevel) {
             if (mAccelState != AccelState.LEVEL) {
                 return;
@@ -255,31 +381,43 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
             }
         }
 
-        SmsManager smsManager = SmsManager.getDefault();
-
         for (StringBuilder b : mSmsMessages) {
 
             String msg = b.toString();
-            if (DBG) {
-                Log.d(TAG, "SMS: " + msg.replaceAll("\n", "//"));
-            }
-
             ArrayList<String> msgList = null;
             if (msg.length() > MAX_SMS_MSG_LEN) {
                 msgList = smsManager.divideMessage(msg);
             }
     
-            for (String phoneNumber : mPhoneNumbers) {
-                PendingIntent piSent = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_SENT), 0);
-                PendingIntent piDelivered = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_DELIVERED), 0);
-                
+            for (String phoneNumber : phoneNumbers) {
                 if (msgList != null) {
-                    smsManager.sendMultipartTextMessage(phoneNumber, null, msgList, null, null);
+                    sendMultipartTextMessage(smsManager, phoneNumber, msgList);
                 } else {
-                    smsManager.sendTextMessage(phoneNumber, null, msg, piSent, piDelivered);
+                    sendSingleTextMessage(smsManager, phoneNumber, msg);
                 }
             }
         }
+    }
+    
+    private void sendStatsTextMessage(boolean checkLevel) {
+        sendStatsTextMessage(SmsManager.getDefault(), checkLevel, mPhoneNumbers);
+    }
+
+    private void sendSingleTextMessage(SmsManager manager, String phoneNumber, String msg) {
+        Log.i(TAG, String.format("SMS %s: %s", phoneNumber, msg));
+
+        PendingIntent piSent = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_SENT), 0);
+        PendingIntent piDelivered = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_DELIVERED), 0);
+        manager.sendTextMessage(phoneNumber, null, msg, piSent, piDelivered);
+    }
+
+    private void sendMultipartTextMessage(SmsManager manager, String phoneNumber, ArrayList<String> msgList) {
+        int i = 0;
+        for (String msg : msgList) {
+            Log.i(TAG, String.format("SMS %s[%d]: %s", phoneNumber, i, msg));
+            i++;
+        }
+        manager.sendMultipartTextMessage(phoneNumber, null, msgList, null, null);
     }
 
     @Override
@@ -288,7 +426,9 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         mHandler = new MsgHandler();
         mHandler.sendEmptyMessageDelayed(MSG_UPDATE_TELEMETRY, TELEMETRY_INTERVAL);
         mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
-        mHandler.sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
+        if (SEND_TXT_MESSAGES) {
+            mHandler.sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
+        }
         mContext.setPhotoHandler(mHandler, MSG_HANDLE_PHOTO);
 
         LocationManager locationManager = (LocationManager) mContext.getSystemService(Context.LOCATION_SERVICE);
@@ -318,14 +458,10 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 }
                 break;
             case MSG_HANDLE_PHOTO:
-                mPhotoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
-                if (mPhotoCount < MAX_PHOTOS) {
-                    mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
-                }
-
-                if (!mSendingChunks) {
-                    startPhotoData(0);
-                }
+                int photoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
+                String photoPath = msg.getData().getString(DroidCamera.RESULT_IMAGE_FILE);
+                String thumbPath = msg.getData().getString(DroidCamera.RESULT_THUMB_FILE);
+                onPhotoTaken(photoCount, photoPath, thumbPath);
                 break;
             case MSG_START_PHOTO_DATA:
                 mPhotoData.index = msg.arg1;
@@ -339,10 +475,10 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 mSendingChunks = false;
                 break;
             case MSG_SEND_TEXT:
-                sendTextMessage(false);
+                sendStatsTextMessage(false);
                 break;
             case MSG_SEND_TEXT_ALERT:
-                sendTextMessage(true);
+                sendStatsTextMessage(true);
                 sendEmptyMessageDelayed(MSG_SEND_TEXT_ALERT, SMS_ALERT_INTERVAL);
                 break;
             case MSG_ADD_PHONE_NUMBER:
@@ -378,26 +514,6 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
 
     @Override
     public void onStatusChanged(String provider, int status, Bundle extras) {
-    }
-
-    protected void updateRadioLevel() {
-        List<CellInfo> infos = mTelephony.getAllCellInfo();
-        if (infos == null) {
-            return;
-        }
-
-        mRadioLevel = -1;
-        for (CellInfo info : infos) {
-            if (!info.isRegistered()) {
-                return;
-            }
-
-            if (info instanceof CellInfoGsm) {
-                CellInfoGsm gsmInfo = (CellInfoGsm) info;
-                mRadioLevel = gsmInfo.getCellSignalStrength().getLevel();
-                break;
-            }
-        }
     }
 
     protected boolean isBetterLocation(Location location,
