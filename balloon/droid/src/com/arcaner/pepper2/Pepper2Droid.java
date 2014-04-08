@@ -22,13 +22,16 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.os.BatteryManager;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.Message;
+import android.os.StatFs;
 import android.telephony.PhoneStateListener;
 import android.telephony.SignalStrength;
 import android.telephony.SmsManager;
 import android.telephony.TelephonyManager;
+import android.text.format.Formatter;
 import android.util.Log;
 
 import com.arcaner.pepper2.proto.DroidTelemetry;
@@ -52,7 +55,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private static final int PHOTO_CHUNK_SIZE = ProtoMessage.MAX_DATA_LEN;
     private static final int MAX_PHOTOS = 768;
     
-    private static final int SMS_ALERT_INTERVAL = 1000 * 60 * 5;
+    private static final int SMS_ALERT_INTERVAL = 1000 * 60 * 10;
     private static final int MIN_ACCEL_STABILITY = 1000 * 10;
     private static final int ACCEL_SAMPLE_SIZE = 20;
     private static final float ACCEL_RISING  =  1.1f;
@@ -98,6 +101,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private ArrayList<String> mPhoneNumbers = new ArrayList<String>();
     private IntentFilter mSmsFilter;
     private SmsReceiver mSmsReceiver;
+    private DataLogger mDataLogger;
 
     public Pepper2Droid(MainActivity context, BluetoothServer btServer) {
         super((ThreadGroup) null, TAG);
@@ -212,6 +216,12 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         mTelemetry.accelState = (short) mAccelState.ordinal();
         mTelemetry.accelDuration = (int) ((System.currentTimeMillis() - mAccelStateBegin) / 1000);
 
+        File path = Environment.getExternalStorageDirectory();
+        StatFs stat = new StatFs(path.getPath());
+        long blockSize = stat.getBlockSize();
+        long availableBlocks = stat.getAvailableBlocks();
+        String diskAvailable = Formatter.formatFileSize(mContext, availableBlocks * blockSize);
+
         for (int i = 0; i < mSmsMessages.length; i++) {
             mSmsMessages[i].delete(0, mSmsMessages[i].length());
         }
@@ -232,7 +242,10 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                        .append(mAccelState.toString())
                        .append(" for ")
                        .append(mTelemetry.accelDuration)
-                       .append(" sec");
+                       .append(" sec")
+                       .append("\n")
+                       .append("DISK FREE: ")
+                       .append(diskAvailable);
 
         mSmsMessages[1].append("LOCATION\n")
                        .append(GMAPS_URL)
@@ -241,6 +254,8 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                        .append(mTelemetry.longitude);
 
         mBtServer.writeMessage(mTelemetry);
+        mDataLogger.log(mTelemetry);
+        mContext.updateUI(mPhotoCount, mBtServer.isConnected(), mTelemetry.battery, mRadioBars, diskAvailable);
     }
 
     private void onPhotoTaken(int photoCount, String photoPath, String thumbPath) {
@@ -253,12 +268,16 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
         File thumbFile = new File(thumbPath);
         mTotalThumbSize += thumbFile.length();
 
-        if (mPhotoCount < MAX_PHOTOS) {
-            mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
-        }
+        takeNextPhoto();
 
         if (!mSendingChunks) {
             startPhotoData(0);
+        }
+    }
+
+    private void takeNextPhoto() {
+        if (mPhotoCount < MAX_PHOTOS) {
+            mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
         }
     }
 
@@ -271,7 +290,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
             mPhotoData.index = Math.min(mPhotoCount, mPhotoData.index + PHOTO_SKIP);
             mPhotoFile = null;
             mPhotoDataStart = System.currentTimeMillis();
-            Log.i(TAG, "Skipping ahead to photo " + mPhotoData.index);
+            mDataLogger.log("Skipping ahead to photo " + mPhotoData.index);
         }
 
         if (mPhotoFile == null) {
@@ -348,6 +367,8 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     }
 
     public void onTextReceived(String msgBody, String srcAddr) {
+        mDataLogger.log(String.format("SMS RCVD FROM %s: %s", srcAddr, msgBody));
+
         SmsManager smsManager = SmsManager.getDefault();
         try {
             String tokens[] = msgBody.split(" ");
@@ -404,7 +425,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     }
 
     private void sendSingleTextMessage(SmsManager manager, String phoneNumber, String msg) {
-        Log.i(TAG, String.format("SMS %s: %s", phoneNumber, msg));
+        mDataLogger.log(String.format("SMS %s: %s", phoneNumber, msg));
 
         PendingIntent piSent = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_SENT), 0);
         PendingIntent piDelivered = PendingIntent.getBroadcast(mContext, 0, new Intent(SMS_DELIVERED), 0);
@@ -414,7 +435,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     private void sendMultipartTextMessage(SmsManager manager, String phoneNumber, ArrayList<String> msgList) {
         int i = 0;
         for (String msg : msgList) {
-            Log.i(TAG, String.format("SMS %s[%d]: %s", phoneNumber, i, msg));
+            mDataLogger.log(String.format("SMS %s[%d]: %s", phoneNumber, i, msg));
             i++;
         }
         manager.sendMultipartTextMessage(phoneNumber, null, msgList, null, null);
@@ -423,6 +444,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
     @Override
     public void run() {
         Looper.prepare();
+        mDataLogger = new DataLogger(mContext);
         mHandler = new MsgHandler();
         mHandler.sendEmptyMessageDelayed(MSG_UPDATE_TELEMETRY, TELEMETRY_INTERVAL);
         mHandler.sendEmptyMessageDelayed(MSG_TAKE_PHOTO, PHOTO_INTERVAL);
@@ -458,6 +480,10 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
                 }
                 break;
             case MSG_HANDLE_PHOTO:
+                if (msg.arg1 == DroidCamera.RESULT_CANCELED) {
+                    takeNextPhoto();
+                    return;
+                }
                 int photoCount = msg.getData().getInt(DroidCamera.RESULT_IMAGE_COUNT);
                 String photoPath = msg.getData().getString(DroidCamera.RESULT_IMAGE_FILE);
                 String thumbPath = msg.getData().getString(DroidCamera.RESULT_THUMB_FILE);
