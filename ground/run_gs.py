@@ -8,37 +8,9 @@ import signal
 import sys
 import time
 
-import gevent.wsgi
-
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'ground.settings')
-
 from ground import station
-from ground.wsgi import application
-from django.utils.autoreload import code_changed, restart_with_reloader
 
-RELOAD = False
 gs = None
-
-class Reload(gevent.GreenletExit):
-    pass
-
-def reload_watcher():
-    global RELOAD
-    while True:
-        RELOAD = code_changed()
-        if RELOAD:
-            print '\n\nRELOAD\n\n'
-            raise Reload()
-        time.sleep(1)
-
-def reloader(job):
-    if not (isinstance(job.value, Reload) and RELOAD):
-        return
-
-    #wsgi_server.stop()
-    #station.stop()
-    gs.stop()
-    gevent.sleep(0.5)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -61,16 +33,7 @@ def main():
                                gps_baud=args.gps_baud, tcp_addr=args.tcp,
                                servers=args.server, auth_tokens=args.auth_token)
     gs.start()
-
-    job = gevent.spawn(reload_watcher)
-    job.link(reloader)
     gs.join()
-    #wsgi_server = gevent.wsgi.WSGIServer(('', 9909), application)
-    #wsgi_server.serve_forever()
-
-    if RELOAD:
-        args = [sys.executable] + ['-W%s' % o for o in sys.warnoptions] + sys.argv
-        restart_with_reloader()
 
 if __name__ == '__main__':
     main()
