@@ -1,5 +1,7 @@
 <resources>
 
     <color name="black_overlay">#66000000</color>
+    <color name="connected_yes">#66FF33</color>
+    <color name="connected_no">#FF3300</color>
 
 </resources>
