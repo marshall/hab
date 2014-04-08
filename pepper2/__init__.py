@@ -4,5 +4,10 @@ import os
 import main
 
 from worker import Worker
-import droid
-import obc
+
+try:
+    import droid
+    import obc
+except ImportError, e:
+    # This is only here for the ground station..
+    pass
