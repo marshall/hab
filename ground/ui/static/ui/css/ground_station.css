@@ -67,6 +67,23 @@ td {
     background-color: #ffefef;
 }
 
+.disconnected:not(#droid_connected) {
+    font-style: italic;
+    color: #c0c0c0;
+}
+
+.connected[id='droid_connected'], .disconnected[id='droid_connected'] {
+    font-weight: bold;
+}
+
+.connected[id='droid_connected'] {
+    color: #009933;
+}
+
+.disconnected[id='droid_connected'] {
+    color: #CC0000;
+}
+
 #droid_photo_progress, #droid_chunk_progress {
     display: none;
 }

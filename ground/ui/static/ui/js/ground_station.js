@@ -76,6 +76,20 @@ DOMMapper.prototype = {
             this.element('droid_radio').text(sprintf('%d dBm / %d%%', droid.radio_dbm, droid.radio_bars));
         },
 
+        droid_connected: function(connected) {
+            this.element('droid_connected').text(connected ? 'YES' : 'NO')
+
+            var droidData = $(".data[id^='droid_']")
+                .toggleClass('connected', connected)
+                .toggleClass('disconnected', !connected);
+
+            $.each(droidData, function(data) {
+                var label = $(data).parent().find('.data-label .label');
+                label.toggleClass('label-default', connected)
+                     .toggleClass('label-danger', !connected);
+            });
+        },
+
         droid_accel_state: function(accel_state) {
             var state = this.accelStates[accel_state];
             this.element('droid_accel_state').text(sprintf('%8s', state));
