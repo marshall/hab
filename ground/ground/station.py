@@ -30,6 +30,7 @@ class GSWebClient(object):
         self.headers={ 'Authorization': 'Token %s' % auth_token }
         self.log = logging.getLogger('gswebclient')
         self.completed_photos = []
+        self.error_count = 0
 
     def complete_photo(self, index):
         self.completed_photos.append(index)
@@ -37,26 +38,47 @@ class GSWebClient(object):
     def is_photo_complete(self, index):
         return index in self.completed_photos
 
-    def post(self, uri, **data):
-        try:
-            raw_data = json.dumps(data)
-            self.log.info('POST %s: %s', uri, raw_data)
-            headers = self.headers.copy()
+    def post(self, uri, callback=None, **data):
+        def post_job():
+            try:
+                raw_data = json.dumps(data)
+                self.log.info('POST %s: %s', uri, raw_data)
+                headers = self.headers.copy()
 
-            headers['Content-Length'] = len(raw_data)
-            headers['Content-Type'] = 'application/json'
+                headers['Content-Length'] = len(raw_data)
+                headers['Content-Type'] = 'application/json'
 
-            conn = httplib.HTTPConnection(self.addr)
-            conn.request('POST', uri, raw_data, headers)
-            response = conn.getresponse()
-            if response.status != 200:
-                self.log.warning('%d %s', response.status, response.reason)
-                self.log.warning(response.read())
-                return
+                conn = httplib.HTTPConnection(self.addr)
+                conn.request('POST', uri, raw_data, headers)
+                response = conn.getresponse()
+                if response.status != 200:
+                    self.log.warning('%d %s', response.status, response.reason)
+                    self.log.warning(response.read())
+                    self.error_count += 1
+                    return
 
-            return json.load(response)
-        except:
-            self.log.warning('Failed to POST to %s%s', self.addr, uri)
+                self.error_count = 0
+                if callback:
+                    callback(json.load(response))
+            except:
+                self.log.warning('Failed to POST to %s%s', self.addr, uri)
+                self.error_count += 1
+
+        gevent.spawn(post_job)
+
+    def post_photo_data(self, photo_data):
+        def data_posted(result):
+            if result is not None and result['complete']:
+                self.complete_photo(photo_data.index)
+
+        self.post('/api/photos/', index=photo_data.index,
+                                  chunks=photo_data.chunk_count,
+                                  chunk=photo_data.chunk,
+                                  data=base64.b64encode(photo_data.photo_data),
+                                  callback=data_posted)
+
+    def is_active(self):
+        return self.error_count < 5
 
 class GroundStation(object):
     bind_port = 9910
@@ -204,15 +226,10 @@ class GroundStation(object):
             if client.is_photo_complete(photo_data.index):
                 continue
 
-            posted = client.post('/api/photos/', index=photo_data.index,
-                                                 chunks=photo_data.chunk_count,
-                                                 chunk=photo_data.chunk,
-                                                 data=base64.b64encode(photo_data.photo_data))
-            if posted is not None and posted['complete']:
-                client.complete_photo(photo_data.index)
+            client.post_photo_data(photo_data)
 
-        if all((client.is_photo_complete(photo_data.index) for client in self.web_clients)):
-            self.start_next_photo(photo_data.index)
+        #if all((c.is_photo_complete(photo_data.index) or not c.is_active() for c in self.web_clients)):
+        #    self.start_next_photo(photo_data.index)
 
     def start_next_photo(self, index):
         if not self.droid_telemetry:
