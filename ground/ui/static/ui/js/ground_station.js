@@ -73,7 +73,9 @@ DOMMapper.prototype = {
 
         droid: function(droid) {
             this.mapData(droid, 'droid_');
-            this.element('droid_radio').text(sprintf('%d dBm / %d%%', droid.radio_dbm, droid.radio_bars));
+            if ('radio_dbm' in droid) {
+                this.element('droid_radio').text(sprintf('%d dBm / %d%%', droid.radio_dbm, droid.radio_bars));
+            }
         },
 
         droid_connected: function(connected) {
