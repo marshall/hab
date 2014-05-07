@@ -1,0 +1,28 @@
+{
+    "ascent_mph": 8.392663236877638, 
+    "ascent_ms": 3.7518468482324048, 
+    "descent_mph": 23.15059374494055, 
+    "descent_ms": 10.349215704856285, 
+    "flight_time": 9841.467, 
+    "ground_distance_km": 94.38607394262262, 
+    "ground_speed_kmh": {
+        "avg": 34.52634309432134, 
+        "max": 515.6363413436491, 
+        "min": 0.0
+    }, 
+    "max_altitude_km": 27.342300415039062, 
+    "sensors": {
+        "ext_temperature": {
+            "max": 34.689998626708984, 
+            "min": -51.0
+        }, 
+        "int_humidity": {
+            "max": 99.9000015258789, 
+            "min": 0
+        }, 
+        "int_temperature": {
+            "max": 32.79999923706055, 
+            "min": -3.0
+        }
+    }
+}
