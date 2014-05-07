@@ -45,7 +45,7 @@ public class Pepper2Droid extends Thread implements LocationListener, SensorEven
 
     private static final String TAG = "PEPPER2-DROID";
     private static final boolean DBG = false;
-    private static final boolean SEND_TXT_MESSAGES = false; // TODO CHANGE ME!!!!!
+    private static final boolean SEND_TXT_MESSAGES = true;
 
     private static final int TWO_MINUTES = 1000 * 60 * 2;
     private static final int TELEMETRY_INTERVAL = 5 * 1000;
